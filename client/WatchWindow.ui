@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WatchWindow</class>
+ <widget class="QDialog" name="WatchWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>620</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Remote Monitor</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog {
+    background: #f4f1ea;
+}
+QGroupBox {
+    border: 1px solid #c9c0af;
+    border-radius: 10px;
+    margin-top: 10px;
+    background: #fbf8f2;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px 0 6px;
+    color: #5e5033;
+}
+QPushButton {
+    min-height: 34px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid #b89a63;
+    background: #d8b26e;
+    color: #2d2418;
+}
+QPushButton:hover {
+    background: #e3bf7d;
+}
+QPushButton:pressed {
+    background: #c79f57;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <property name="leftMargin">
+    <number>12</number>
+   </property>
+   <property name="topMargin">
+    <number>12</number>
+   </property>
+   <property name="rightMargin">
+    <number>12</number>
+   </property>
+   <property name="bottomMargin">
+    <number>12</number>
+   </property>
+   <item>
+    <widget class="QGroupBox" name="controlsGroupBox">
+     <property name="title">
+      <string>Machine Controls</string>
+     </property>
+     <layout class="QVBoxLayout" name="controlsRootLayout">
+      <item>
+       <layout class="QHBoxLayout" name="toolbarLayout">
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="lockButton">
+          <property name="text">
+           <string>Lock</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="unlockButton">
+          <property name="text">
+           <string>Unlock</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="instructionsLabel">
+        <property name="styleSheet">
+         <string notr="true">color: #6e6456;</string>
+        </property>
+        <property name="text">
+         <string>Use the preview area below to send mouse clicks and movement to the remote machine.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="previewGroupBox">
+     <property name="title">
+      <string>Remote Screen</string>
+     </property>
+     <layout class="QVBoxLayout" name="previewLayout">
+      <property name="leftMargin">
+       <number>8</number>
+      </property>
+      <property name="topMargin">
+       <number>8</number>
+      </property>
+      <property name="rightMargin">
+       <number>8</number>
+      </property>
+      <property name="bottomMargin">
+       <number>8</number>
+      </property>
+      <item>
+       <widget class="QFrame" name="screenFrame">
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Sunken</enum>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QFrame#screenFrame {
+    border: 1px solid #c9c0af;
+    border-radius: 10px;
+    background: #111111;
+}</string>
+        </property>
+        <layout class="QVBoxLayout" name="screenFrameLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QWidget" name="screenContainer" native="true"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

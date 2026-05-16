@@ -1,28 +1,20 @@
 #include "LockWindow.h"
 
+#include "ui_LockWindow.h"
+
 #include <QApplication>
 #include <QCloseEvent>
-#include <QLabel>
-#include <QVBoxLayout>
+#include <QKeyEvent>
 
 #include <windows.h>
 
 LockWindow::LockWindow(QWidget* parent)
     : QWidget(parent)
+    , m_ui(std::make_unique<Ui::LockWindow>())
 {
+    m_ui->setupUi(this);
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-    setStyleSheet(QStringLiteral("background-color: black; color: white;"));
-
-    auto* layout = new QVBoxLayout(this);
-    m_label = new QLabel(tr("Please contact the administrator to unlock this machine."), this);
-    QFont font = m_label->font();
-    font.setPointSize(22);
-    font.setBold(true);
-    m_label->setFont(font);
-    m_label->setAlignment(Qt::AlignCenter);
-    layout->addStretch();
-    layout->addWidget(m_label);
-    layout->addStretch();
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 LockWindow::~LockWindow()
@@ -43,6 +35,7 @@ void LockWindow::lockMachine()
     showFullScreen();
     raise();
     activateWindow();
+    setFocus(Qt::ActiveWindowFocusReason);
 }
 
 void LockWindow::unlockMachine()
@@ -67,6 +60,17 @@ void LockWindow::closeEvent(QCloseEvent* event)
         return;
     }
     QWidget::closeEvent(event);
+}
+
+void LockWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (m_locked && event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)) {
+        unlockMachine();
+        event->accept();
+        return;
+    }
+
+    QWidget::keyPressEvent(event);
 }
 
 void LockWindow::updateSystemUi(bool locked)

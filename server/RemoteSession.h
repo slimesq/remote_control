@@ -5,6 +5,7 @@
 #include <QObject>
 
 class QTcpSocket;
+class QTimer;
 class CommandService;
 
 class RemoteSession : public QObject
@@ -17,12 +18,15 @@ public:
 private slots:
     void onReadyRead();
     void onDisconnected();
+    void onIdleTimeout();
 
 private:
     void processPacket(const remoteqt::Packet& packet);
+    void restartIdleTimer();
 
     QTcpSocket* m_socket = nullptr;
     CommandService* m_commandService = nullptr;
+    QTimer* m_idleTimer = nullptr;
     QByteArray m_buffer;
     bool m_handled = false;
 };

@@ -1,13 +1,11 @@
 #include "WatchWindow.h"
 
 #include "RemoteClient.h"
+#include "ui_WatchWindow.h"
 
 #include <QCloseEvent>
-#include <QHBoxLayout>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPushButton>
-#include <QShowEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -95,32 +93,26 @@ remoteqt::MouseButton RemoteScreenWidget::toProtocolButton(Qt::MouseButton butto
 WatchWindow::WatchWindow(RemoteClient* client, QWidget* parent)
     : QDialog(parent)
     , m_client(client)
+    , m_ui(std::make_unique<Ui::WatchWindow>())
 {
-    setWindowTitle(tr("远程监控"));
-    resize(900, 620);
+    m_ui->setupUi(this);
 
-    auto* rootLayout = new QVBoxLayout(this);
-    auto* toolbarLayout = new QHBoxLayout;
-    rootLayout->addLayout(toolbarLayout);
-
-    m_lockButton = new QPushButton(tr("锁机"), this);
-    m_unlockButton = new QPushButton(tr("解锁"), this);
-    toolbarLayout->addStretch();
-    toolbarLayout->addWidget(m_lockButton);
-    toolbarLayout->addWidget(m_unlockButton);
-
-    m_screenWidget = new RemoteScreenWidget(this);
-    rootLayout->addWidget(m_screenWidget, 1);
+    auto* screenLayout = new QVBoxLayout(m_ui->screenContainer);
+    screenLayout->setContentsMargins(0, 0, 0, 0);
+    m_screenWidget = new RemoteScreenWidget(m_ui->screenContainer);
+    screenLayout->addWidget(m_screenWidget);
 
     m_timer = new QTimer(this);
     m_timer->setInterval(200);
 
     connect(m_timer, &QTimer::timeout, m_client, &RemoteClient::requestWatchFrame);
     connect(m_screenWidget, &RemoteScreenWidget::mouseEventCreated, m_client, &RemoteClient::sendMouseEvent);
-    connect(m_lockButton, &QPushButton::clicked, m_client, &RemoteClient::lockRemote);
-    connect(m_unlockButton, &QPushButton::clicked, m_client, &RemoteClient::unlockRemote);
+    connect(m_ui->lockButton, &QPushButton::clicked, m_client, &RemoteClient::lockRemote);
+    connect(m_ui->unlockButton, &QPushButton::clicked, m_client, &RemoteClient::unlockRemote);
     connect(m_client, &RemoteClient::watchFrameReady, m_screenWidget, &RemoteScreenWidget::setImage);
 }
+
+WatchWindow::~WatchWindow() = default;
 
 void WatchWindow::showEvent(QShowEvent* event)
 {

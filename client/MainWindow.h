@@ -3,16 +3,17 @@
 #include "../common/Protocol.h"
 
 #include <QMainWindow>
+#include <memory>
 
-class QListWidget;
-class QLineEdit;
 class QProgressDialog;
-class QPushButton;
-class QSpinBox;
-class QTreeWidget;
+class QTableWidgetItem;
 class QTreeWidgetItem;
 class RemoteClient;
 class WatchWindow;
+
+namespace Ui {
+class MainWindow;
+}
 
 class MainWindow : public QMainWindow
 {
@@ -20,9 +21,19 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
 
 private:
-    void buildUi();
+    QProgressDialog* ensureDownloadProgressDialog();
+    void setBusyState(bool busy, const QString& message = {});
+    void updateActionState();
+    void clearRemoteView();
+    void showWatchWindow();
+    QString currentSelectedFilePath() const;
+    QString currentSelectedFileName() const;
+    void openSelectedFile();
+    void downloadSelectedFile();
+    void deleteSelectedFile();
     void wireSignals();
     void requestSelectedDirectory(QTreeWidgetItem* item);
     void populateDriveTree(const QStringList& drives);
@@ -33,13 +44,8 @@ private:
 
     RemoteClient* m_client = nullptr;
     WatchWindow* m_watchWindow = nullptr;
-    QWidget* m_centralWidget = nullptr;
-    QLineEdit* m_hostEdit = nullptr;
-    QSpinBox* m_portSpin = nullptr;
-    QPushButton* m_testButton = nullptr;
-    QPushButton* m_refreshButton = nullptr;
-    QPushButton* m_watchButton = nullptr;
-    QTreeWidget* m_treeWidget = nullptr;
-    QListWidget* m_fileList = nullptr;
+    std::unique_ptr<Ui::MainWindow> m_ui;
     QProgressDialog* m_downloadProgress = nullptr;
+    bool m_connectionVerified = false;
+    bool m_busy = false;
 };

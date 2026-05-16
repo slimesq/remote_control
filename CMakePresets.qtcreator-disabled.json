@@ -1,0 +1,76 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "qtcreator-msvc-base",
+            "hidden": true,
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl",
+                "CMAKE_CXX_COMPILER": "cl",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "qtcreator-debug",
+            "displayName": "Qt Creator Debug",
+            "description": "Debug build for Qt Creator",
+            "inherits": "qtcreator-msvc-base",
+            "binaryDir": "${sourceDir}/build/qtcreator-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "qtcreator-release",
+            "displayName": "Qt Creator Release",
+            "description": "Release build for Qt Creator",
+            "inherits": "qtcreator-msvc-base",
+            "binaryDir": "${sourceDir}/build/qtcreator-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "build-debug-all",
+            "displayName": "Build Debug All",
+            "configurePreset": "qtcreator-debug"
+        },
+        {
+            "name": "build-debug-client",
+            "displayName": "Build Debug Client",
+            "configurePreset": "qtcreator-debug",
+            "targets": [
+                "remote_client_qt"
+            ]
+        },
+        {
+            "name": "build-debug-server",
+            "displayName": "Build Debug Server",
+            "configurePreset": "qtcreator-debug",
+            "targets": [
+                "remote_server_qt"
+            ]
+        },
+        {
+            "name": "build-debug-smoke",
+            "displayName": "Build Debug Smoke Test",
+            "configurePreset": "qtcreator-debug",
+            "targets": [
+                "remote_smoke_test"
+            ]
+        },
+        {
+            "name": "build-release-all",
+            "displayName": "Build Release All",
+            "configurePreset": "qtcreator-release"
+        }
+    ]
+}

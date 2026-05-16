@@ -1,8 +1,7 @@
 #include "RemoteClient.h"
 
-#include <QBuffer>
 #include <QDataStream>
-#include <QFile>
+#include <QSaveFile>
 #include <QTcpSocket>
 
 namespace {
@@ -40,7 +39,7 @@ public:
         if (m_command == remoteqt::Command::DownloadFile) {
             m_file.setFileName(m_localPath);
             if (!m_file.open(QIODevice::WriteOnly)) {
-                fail(tr("无法写入本地文件：%1").arg(m_localPath));
+                fail(tr("Unable to write the local file: %1").arg(m_localPath));
                 return;
             }
         }
@@ -72,28 +71,21 @@ private slots:
     void onDisconnected()
     {
         if (m_finished) {
-            deleteLater();
+            requestDeletion();
             return;
         }
 
         switch (m_command) {
         case remoteqt::Command::ListDirectory:
-            emit m_client->directoryListed(m_context, m_entries);
-            finish();
+            fail(tr("Directory listing ended before the terminating packet was received."));
             break;
         case remoteqt::Command::DownloadFile:
-            if (m_expectedDownloadBytes >= 0 && m_expectedDownloadBytes == m_receivedDownloadBytes) {
-                emit m_client->downloadFinished(m_context, m_localPath, true, tr("下载完成"));
-                finish();
-            } else {
-                fail(tr("下载被中断"));
-            }
+            fail(tr("Download was interrupted."));
             break;
         default:
-            fail(tr("连接已关闭，未收到完整响应"));
+            fail(tr("Connection closed before a complete response was received."));
             break;
         }
-        deleteLater();
     }
 
     void onErrorOccurred(QAbstractSocket::SocketError)
@@ -105,50 +97,78 @@ private slots:
     }
 
 private:
+    class CallbackScope final
+    {
+    public:
+        explicit CallbackScope(PendingRequest* request)
+            : m_request(request)
+        {
+            ++m_request->m_callbackDepth;
+        }
+
+        ~CallbackScope()
+        {
+            --m_request->m_callbackDepth;
+            if (m_request->m_callbackDepth == 0 && m_request->m_cleanupPending) {
+                m_request->m_cleanupPending = false;
+                m_request->deleteLater();
+            }
+        }
+
+    private:
+        PendingRequest* m_request = nullptr;
+    };
+
+    void requestDeletion()
+    {
+        if (m_callbackDepth > 0) {
+            m_cleanupPending = true;
+            return;
+        }
+        deleteLater();
+    }
+
+    void markFinished()
+    {
+        if (m_finished) {
+            return;
+        }
+        m_finished = true;
+        if (m_command == remoteqt::Command::WatchScreen) {
+            m_client->setProperty("watchPending", false);
+        }
+    }
+
     void handlePacket(const remoteqt::Packet& packet)
     {
+        CallbackScope scope(this);
+
         if (packet.command != m_command) {
-            fail(tr("收到意外命令：%1").arg(static_cast<int>(packet.command)));
+            fail(tr("Received an unexpected command: %1").arg(static_cast<int>(packet.command)));
             return;
         }
 
         switch (m_command) {
         case remoteqt::Command::TestConnection:
-            emit m_client->connectionTested(true, tr("连接成功"));
-            finish();
+            markFinished();
+            emit m_client->connectionTested(true, tr("Connection succeeded."));
+            m_socket.disconnectFromHost();
             break;
         case remoteqt::Command::ListDrives:
+            markFinished();
             emit m_client->drivesListed(remoteqt::decodeLocal8Bit(packet.payload).split(',', Qt::SkipEmptyParts));
-            finish();
+            m_socket.disconnectFromHost();
             break;
         case remoteqt::Command::ListDirectory:
-        {
-            const remoteqt::FileEntry entry = remoteqt::FileEntry::fromPayload(packet.payload);
-            if (entry.isInvalid) {
-                fail(tr("目录无法访问：%1").arg(m_context));
-                return;
-            }
-            if (entry.hasNext) {
-                m_entries.push_back(entry);
-            }
+            handleDirectoryPacket(packet.payload);
             break;
-        }
         case remoteqt::Command::RunFile:
         case remoteqt::Command::DeleteFile:
         case remoteqt::Command::LockMachine:
         case remoteqt::Command::UnlockMachine:
         case remoteqt::Command::MouseEvent:
-        {
-            QString message;
-            const bool success = remoteqt::parseStatusPayload(packet.payload, true, &message);
-            if (!success) {
-                fail(message.isEmpty() ? tr("命令执行失败") : message);
-                return;
-            }
-            emit m_client->commandCompleted(m_command, m_context, message.isEmpty() ? tr("命令执行完成") : message);
-            finish();
+            handleStatusPacket(packet.payload);
             break;
-        }
         case remoteqt::Command::DownloadFile:
             handleDownloadPacket(packet.payload);
             break;
@@ -156,7 +176,7 @@ private:
         {
             QImage image;
             if (!image.loadFromData(packet.payload, "PNG")) {
-                fail(tr("远程截图解码失败"));
+                fail(tr("Failed to decode the remote screenshot."));
                 return;
             }
             emit m_client->watchFrameReady(image);
@@ -166,40 +186,100 @@ private:
         }
     }
 
+    void handleDirectoryPacket(const QByteArray& payload)
+    {
+        const remoteqt::FileEntry entry = remoteqt::FileEntry::fromPayload(payload);
+        if (entry.isInvalid) {
+            fail(tr("Directory is unavailable: %1").arg(m_context));
+            return;
+        }
+
+        if (entry.hasNext) {
+            m_entries.push_back(entry);
+            return;
+        }
+
+        markFinished();
+        emit m_client->directoryListed(m_context, m_entries);
+        m_socket.disconnectFromHost();
+    }
+
+    void handleStatusPacket(const QByteArray& payload)
+    {
+        QString message;
+        const bool success = remoteqt::parseStatusPayload(payload, true, &message);
+        if (!success) {
+            fail(message.isEmpty() ? tr("The command failed.") : message);
+            return;
+        }
+
+        markFinished();
+        emit m_client->commandCompleted(
+            m_command,
+            m_context,
+            message.isEmpty() ? tr("The command completed successfully.") : message);
+        m_socket.disconnectFromHost();
+    }
+
     void handleDownloadPacket(const QByteArray& payload)
     {
         if (m_expectedDownloadBytes < 0) {
             if (payload.size() != static_cast<int>(sizeof(qint64))) {
-                fail(tr("下载响应头格式错误"));
+                fail(tr("The download header is invalid."));
                 return;
             }
+
             QDataStream stream(payload);
             stream.setByteOrder(QDataStream::LittleEndian);
             stream >> m_expectedDownloadBytes;
+
             if (m_expectedDownloadBytes < 0) {
-                fail(tr("远程文件无法读取"));
+                fail(tr("The remote file cannot be read."));
                 return;
             }
+
             if (m_expectedDownloadBytes == 0) {
-                if (m_file.isOpen()) {
-                    m_file.close();
+                if (!commitDownloadFile()) {
+                    return;
                 }
+                markFinished();
                 emit m_client->downloadProgress(m_context, 0, 0);
-                emit m_client->downloadFinished(m_context, m_localPath, true, tr("下载完成"));
-                finish();
+                emit m_client->downloadFinished(m_context, m_localPath, true, tr("Download completed."));
+                m_socket.disconnectFromHost();
             }
             return;
         }
 
         if (m_file.write(payload) != payload.size()) {
-            fail(tr("写入本地文件失败"));
+            fail(tr("Failed to write the local file."));
             return;
         }
+
         m_receivedDownloadBytes += payload.size();
         emit m_client->downloadProgress(m_context, m_receivedDownloadBytes, m_expectedDownloadBytes);
-        if (m_receivedDownloadBytes >= m_expectedDownloadBytes) {
-            m_file.close();
+
+        if (m_receivedDownloadBytes > m_expectedDownloadBytes) {
+            fail(tr("Received more download data than expected."));
+            return;
         }
+
+        if (m_receivedDownloadBytes == m_expectedDownloadBytes) {
+            if (!commitDownloadFile()) {
+                return;
+            }
+            markFinished();
+            emit m_client->downloadFinished(m_context, m_localPath, true, tr("Download completed."));
+            m_socket.disconnectFromHost();
+        }
+    }
+
+    bool commitDownloadFile()
+    {
+        if (!m_file.commit()) {
+            fail(tr("Failed to save the local file: %1").arg(m_file.errorString()));
+            return false;
+        }
+        return true;
     }
 
     void fail(const QString& message)
@@ -207,18 +287,23 @@ private:
         if (m_finished) {
             return;
         }
+
+        CallbackScope scope(this);
+
         if (m_file.isOpen()) {
-            m_file.close();
+            m_file.cancelWriting();
         }
+
+        markFinished();
         emit m_client->requestFailed(m_command, m_context, message);
         if (m_command == remoteqt::Command::DownloadFile) {
             emit m_client->downloadFinished(m_context, m_localPath, false, message);
         } else if (m_command == remoteqt::Command::TestConnection) {
             emit m_client->connectionTested(false, message);
         }
-        finish();
+
         m_socket.abort();
-        deleteLater();
+        requestDeletion();
     }
 
     void finish()
@@ -226,10 +311,7 @@ private:
         if (m_finished) {
             return;
         }
-        m_finished = true;
-        if (m_command == remoteqt::Command::WatchScreen) {
-            m_client->setProperty("watchPending", false);
-        }
+        markFinished();
         m_socket.disconnectFromHost();
     }
 
@@ -243,10 +325,12 @@ private:
     QTcpSocket m_socket;
     QByteArray m_buffer;
     QList<remoteqt::FileEntry> m_entries;
-    QFile m_file;
+    QSaveFile m_file;
     qint64 m_expectedDownloadBytes = -1;
     qint64 m_receivedDownloadBytes = 0;
     bool m_finished = false;
+    int m_callbackDepth = 0;
+    bool m_cleanupPending = false;
 };
 
 }
@@ -268,13 +352,13 @@ void RemoteClient::setEndpoint(const QString& host, quint16 port)
 
 void RemoteClient::testConnection()
 {
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::TestConnection, {}, tr("连接测试"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::TestConnection, {}, tr("Connection test"));
     request->start();
 }
 
 void RemoteClient::requestDrives()
 {
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::ListDrives, {}, tr("磁盘列表"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::ListDrives, {}, tr("Drive list"));
     request->start();
 }
 
@@ -308,26 +392,26 @@ void RemoteClient::requestWatchFrame()
         return;
     }
     setProperty("watchPending", true);
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::WatchScreen, {}, tr("远程监控"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::WatchScreen, {}, tr("Remote monitor"));
     request->start();
 }
 
 void RemoteClient::sendMouseEvent(const remoteqt::MouseEventPacket& event)
 {
     QByteArray payload(reinterpret_cast<const char*>(&event), static_cast<int>(sizeof(event)));
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::MouseEvent, payload, tr("鼠标事件"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::MouseEvent, payload, tr("Mouse event"));
     request->start();
 }
 
 void RemoteClient::lockRemote()
 {
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::LockMachine, {}, tr("锁机"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::LockMachine, {}, tr("Lock"));
     request->start();
 }
 
 void RemoteClient::unlockRemote()
 {
-    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::UnlockMachine, {}, tr("解锁"));
+    auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::UnlockMachine, {}, tr("Unlock"));
     request->start();
 }
 

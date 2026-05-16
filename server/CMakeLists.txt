@@ -8,6 +8,7 @@ qt_add_executable(remote_server_qt
     CommandService.h
     LockWindow.cpp
     LockWindow.h
+    LockWindow.ui
     PlatformIntegration.cpp
     PlatformIntegration.h
     ServerTrayController.cpp

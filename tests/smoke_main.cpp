@@ -270,8 +270,11 @@ int main(int argc, char* argv[])
 
     allPassed &= validateDownload(host, port, downloadSourcePath, expectedContent);
 
-    const QString unicodeDirName = QStringLiteral("测试目录_%1").arg(uniqueSuffix);
-    const QString unicodeFileName = QStringLiteral("文件_%1.txt").arg(uniqueSuffix);
+    const QString unicodeDirName = QStringLiteral("unicode_dir_%1_").arg(uniqueSuffix)
+        + QString::fromUcs4(U"\u6D4B\u8BD5");
+    const QString unicodeFileName = QStringLiteral("unicode_file_%1_").arg(uniqueSuffix)
+        + QString::fromUcs4(U"\u6587\u4EF6")
+        + QStringLiteral(".txt");
     const QString unicodeDirPath = tempDir.filePath(unicodeDirName);
     const QString unicodeFilePath = tempDir.filePath(unicodeFileName);
     QDir().mkpath(unicodeDirPath);

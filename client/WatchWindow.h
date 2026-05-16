@@ -4,10 +4,14 @@
 
 #include <QDialog>
 #include <QImage>
+#include <memory>
 
-class QPushButton;
 class QTimer;
 class RemoteClient;
+
+namespace Ui {
+class WatchWindow;
+}
 
 class RemoteScreenWidget : public QWidget
 {
@@ -42,6 +46,7 @@ class WatchWindow : public QDialog
 
 public:
     explicit WatchWindow(RemoteClient* client, QWidget* parent = nullptr);
+    ~WatchWindow() override;
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -50,7 +55,6 @@ protected:
 private:
     RemoteClient* m_client = nullptr;
     RemoteScreenWidget* m_screenWidget = nullptr;
-    QPushButton* m_lockButton = nullptr;
-    QPushButton* m_unlockButton = nullptr;
+    std::unique_ptr<Ui::WatchWindow> m_ui;
     QTimer* m_timer = nullptr;
 };

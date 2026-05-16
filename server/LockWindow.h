@@ -1,8 +1,13 @@
 #pragma once
 
 #include <QWidget>
+#include <memory>
 
-class QLabel;
+class QKeyEvent;
+
+namespace Ui {
+class LockWindow;
+}
 
 class LockWindow : public QWidget
 {
@@ -18,10 +23,11 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void updateSystemUi(bool locked);
 
-    QLabel* m_label = nullptr;
+    std::unique_ptr<Ui::LockWindow> m_ui;
     bool m_locked = false;
 };
