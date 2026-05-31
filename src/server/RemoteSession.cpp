@@ -37,6 +37,7 @@ void RemoteSession::onReadyRead()
         return;
     }
     while (true) {
+        // Each TCP session handles at most one fully parsed request packet.
         const auto packet = remoteqt::Packet::tryParse(m_buffer);
         if (!packet.has_value()) {
             break;
@@ -67,6 +68,7 @@ void RemoteSession::processPacket(const remoteqt::Packet& packet)
         return;
     }
     m_handled = true;
+    // Commands are synchronous here: collect all response packets, write them, then close the socket.
     const QList<remoteqt::Packet> responses = m_commandService->handle(packet);
     for (const remoteqt::Packet& response : responses) {
         m_socket->write(response.serialize());

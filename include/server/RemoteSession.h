@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/Packet.h"
+#include "Packet.h"
 
 #include <QObject>
 

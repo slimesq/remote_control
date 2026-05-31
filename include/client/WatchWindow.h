@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/Protocol.h"
+#include "Protocol.h"
 
 #include <QDialog>
 #include <QImage>
@@ -33,11 +33,15 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
+    void flushPendingMoveEvent();
     remoteqt::MouseEventPacket makeMouseEvent(remoteqt::MouseAction action, remoteqt::MouseButton button, const QPoint& point) const;
     QPoint mapToRemote(const QPoint& point) const;
     static remoteqt::MouseButton toProtocolButton(Qt::MouseButton button);
 
     QImage m_image;
+    QTimer* m_moveEventTimer = nullptr;
+    remoteqt::MouseEventPacket m_pendingMoveEvent {};
+    bool m_hasPendingMoveEvent = false;
 };
 
 class WatchWindow : public QDialog

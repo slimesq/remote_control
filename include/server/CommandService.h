@@ -1,8 +1,9 @@
 #pragma once
 
-#include "../common/Packet.h"
+#include "Packet.h"
 
 #include <QObject>
+#include <memory>
 
 class LockWindow;
 
@@ -31,5 +32,5 @@ private:
     QList<remoteqt::Packet> handleDeleteFile(const QByteArray& payload) const;
     QList<remoteqt::Packet> handleTestConnection() const;
 
-    LockWindow* m_lockWindow = nullptr;
+    std::unique_ptr<LockWindow> m_lockWindow;
 };

@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QFocusEvent>
 #include <QKeyEvent>
 
 #include <windows.h>
@@ -19,6 +20,7 @@ LockWindow::LockWindow(QWidget* parent)
 
 LockWindow::~LockWindow()
 {
+    releaseKeyboard();
     m_locked = false;
     updateSystemUi(false);
 }
@@ -36,6 +38,7 @@ void LockWindow::lockMachine()
     raise();
     activateWindow();
     setFocus(Qt::ActiveWindowFocusReason);
+    grabKeyboard();
 }
 
 void LockWindow::unlockMachine()
@@ -44,6 +47,7 @@ void LockWindow::unlockMachine()
         return;
     }
     m_locked = false;
+    releaseKeyboard();
     updateSystemUi(false);
     hide();
 }
@@ -60,6 +64,17 @@ void LockWindow::closeEvent(QCloseEvent* event)
         return;
     }
     QWidget::closeEvent(event);
+}
+
+void LockWindow::focusOutEvent(QFocusEvent* event)
+{
+    if (m_locked) {
+        raise();
+        activateWindow();
+        setFocus(Qt::ActiveWindowFocusReason);
+        grabKeyboard();
+    }
+    QWidget::focusOutEvent(event);
 }
 
 void LockWindow::keyPressEvent(QKeyEvent* event)

@@ -44,6 +44,13 @@ MainWindow::MainWindow(QWidget* parent)
 
 MainWindow::~MainWindow() = default;
 
+void MainWindow::setEndpoint(const QString& host, quint16 port)
+{
+    m_ui->hostEdit->setText(host);
+    m_ui->portSpin->setValue(port);
+    m_client->setEndpoint(host.trimmed(), port);
+}
+
 QProgressDialog* MainWindow::ensureDownloadProgressDialog()
 {
     if (!m_downloadProgress) {

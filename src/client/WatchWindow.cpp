@@ -9,11 +9,22 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+namespace {
+
+constexpr int MoveEventIntervalMs = 16;
+
+}
+
 RemoteScreenWidget::RemoteScreenWidget(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
     setMinimumSize(800, 500);
+    // Merge rapid mouse-move bursts into a small fixed-rate stream.
+    m_moveEventTimer = new QTimer(this);
+    m_moveEventTimer->setSingleShot(true);
+    m_moveEventTimer->setInterval(MoveEventIntervalMs);
+    connect(m_moveEventTimer, &QTimer::timeout, this, &RemoteScreenWidget::flushPendingMoveEvent);
 }
 
 void RemoteScreenWidget::setImage(const QImage& image)
@@ -51,8 +62,22 @@ void RemoteScreenWidget::mouseReleaseEvent(QMouseEvent* event)
 
 void RemoteScreenWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    emit mouseEventCreated(makeMouseEvent(remoteqt::MouseAction::Click, remoteqt::MouseButton::None, event->position().toPoint()));
+    // Keep only the latest cursor position; press/release/double-click still go out immediately.
+    m_pendingMoveEvent = makeMouseEvent(remoteqt::MouseAction::Click, remoteqt::MouseButton::None, event->position().toPoint());
+    m_hasPendingMoveEvent = true;
+    if (!m_moveEventTimer->isActive()) {
+        m_moveEventTimer->start();
+    }
     QWidget::mouseMoveEvent(event);
+}
+
+void RemoteScreenWidget::flushPendingMoveEvent()
+{
+    if (!m_hasPendingMoveEvent) {
+        return;
+    }
+    m_hasPendingMoveEvent = false;
+    emit mouseEventCreated(m_pendingMoveEvent);
 }
 
 remoteqt::MouseEventPacket RemoteScreenWidget::makeMouseEvent(remoteqt::MouseAction action, remoteqt::MouseButton button, const QPoint& point) const
@@ -117,6 +142,7 @@ WatchWindow::~WatchWindow() = default;
 void WatchWindow::showEvent(QShowEvent* event)
 {
     m_timer->start();
+    // Kick off the first frame immediately so the dialog does not open empty.
     m_client->requestWatchFrame();
     QDialog::showEvent(event);
 }

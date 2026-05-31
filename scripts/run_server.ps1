@@ -1,5 +1,6 @@
 param(
     [string]$Config = "Debug",
+    [string]$BuildDir = "",
     [switch]$NoTray,
     [int]$LockTestSeconds = 0
 )
@@ -30,11 +31,19 @@ function Resolve-ExecutablePath {
     param(
         [string]$Workspace,
         [string]$Configuration,
-        [string]$FileName
+        [string]$FileName,
+        [string]$PreferredBuildDir
     )
 
     $normalizedConfig = $Configuration.ToLowerInvariant()
-    $candidates = @(
+    $candidates = @()
+
+    if ($PreferredBuildDir) {
+        $candidates += (Join-Path $PreferredBuildDir $FileName)
+    }
+
+    $candidates += @(
+        (Join-Path $Workspace "build\Desktop_Qt_6_7_3_MSVC2022_64bit-$Configuration\$FileName"),
         (Join-Path $Workspace "build\qtcreator-$normalizedConfig\$FileName"),
         (Join-Path $Workspace "build\$Configuration\$FileName")
     )
@@ -53,8 +62,12 @@ function Resolve-ExecutablePath {
     foreach ($root in $buildRoots) {
         $matches = Get-ChildItem -Path $root -Filter $FileName -Recurse -File -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending
-        if ($matches) {
+        if ($matches.Count -eq 1) {
             return $matches[0].FullName
+        }
+        if ($matches.Count -gt 1) {
+            $locations = ($matches | Select-Object -ExpandProperty FullName) -join [Environment]::NewLine
+            throw "Multiple matching executables were found for $FileName. Pass -BuildDir to choose one:`n$locations"
         }
     }
 
@@ -63,7 +76,8 @@ function Resolve-ExecutablePath {
 
 $workspace = Split-Path -Parent $PSScriptRoot
 $qtBin = Resolve-QtBin
-$exe = Resolve-ExecutablePath -Workspace $workspace -Configuration $Config -FileName "remote_server_qt.exe"
+$preferredBuildDir = if ($BuildDir) { $BuildDir } elseif ($env:QT_CREATOR_BUILD_DIR) { $env:QT_CREATOR_BUILD_DIR } else { "" }
+$exe = Resolve-ExecutablePath -Workspace $workspace -Configuration $Config -FileName "remote_server_qt.exe" -PreferredBuildDir $preferredBuildDir
 
 $env:PATH = "$qtBin;$env:PATH"
 

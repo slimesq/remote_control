@@ -108,6 +108,7 @@ private:
 
         ~CallbackScope()
         {
+            // UI slots can spin nested event loops; delay deletion until we fully unwind.
             --m_request->m_callbackDepth;
             if (m_request->m_callbackDepth == 0 && m_request->m_cleanupPending) {
                 m_request->m_cleanupPending = false;
@@ -135,7 +136,7 @@ private:
         }
         m_finished = true;
         if (m_command == remoteqt::Command::WatchScreen) {
-            m_client->setProperty("watchPending", false);
+            m_client->setWatchFramePending(false);
         }
     }
 
@@ -194,6 +195,7 @@ private:
             return;
         }
 
+        // The server streams entries one packet at a time and finishes with a marker packet.
         if (entry.hasNext) {
             m_entries.push_back(entry);
             return;
@@ -224,6 +226,7 @@ private:
     void handleDownloadPacket(const QByteArray& payload)
     {
         if (m_expectedDownloadBytes < 0) {
+            // The first packet is a little-endian size header, not file data.
             if (payload.size() != static_cast<int>(sizeof(qint64))) {
                 fail(tr("The download header is invalid."));
                 return;
@@ -341,7 +344,6 @@ RemoteClient::RemoteClient(QObject* parent)
     qRegisterMetaType<remoteqt::Command>();
     qRegisterMetaType<remoteqt::FileEntry>();
     qRegisterMetaType<QList<remoteqt::FileEntry>>();
-    setProperty("watchPending", false);
 }
 
 void RemoteClient::setEndpoint(const QString& host, quint16 port)
@@ -388,12 +390,23 @@ void RemoteClient::downloadFile(const QString& remotePath, const QString& localP
 
 void RemoteClient::requestWatchFrame()
 {
-    if (property("watchPending").toBool()) {
+    if (hasPendingWatchFrame()) {
         return;
     }
-    setProperty("watchPending", true);
+    // Allow only one outstanding screenshot request so the monitor view does not pile up sockets.
+    setWatchFramePending(true);
     auto* request = new PendingRequest(this, m_host, m_port, remoteqt::Command::WatchScreen, {}, tr("Remote monitor"));
     request->start();
+}
+
+bool RemoteClient::hasPendingWatchFrame() const
+{
+    return m_watchPending;
+}
+
+void RemoteClient::setWatchFramePending(bool pending)
+{
+    m_watchPending = pending;
 }
 
 void RemoteClient::sendMouseEvent(const remoteqt::MouseEventPacket& event)

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../common/Packet.h"
-#include "../common/Protocol.h"
+#include "Packet.h"
+#include "Protocol.h"
 
 #include <QImage>
 #include <QObject>
@@ -26,6 +26,8 @@ public:
     void sendMouseEvent(const remoteqt::MouseEventPacket& event);
     void lockRemote();
     void unlockRemote();
+    bool hasPendingWatchFrame() const;
+    void setWatchFramePending(bool pending);
 
 signals:
     void connectionTested(bool success, const QString& message);

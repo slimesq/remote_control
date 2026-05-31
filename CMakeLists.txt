@@ -14,7 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 qt_standard_project_setup()
 
-add_subdirectory(common)
-add_subdirectory(client)
-add_subdirectory(server)
-add_subdirectory(tests)
+add_subdirectory(src/common)
+add_subdirectory(src/client)
+add_subdirectory(src/server)
+add_subdirectory(src/tests)

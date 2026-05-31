@@ -4,8 +4,8 @@
 2. Pick your Qt 6.7.3 desktop kit, preferably the MSVC 2022 64-bit kit.
    Do not use an LLVM, Clang, or MinGW-based kit for this project.
 3. Set the build directory manually:
-   - Debug: `D:/CodeRepositories/edoyun/remote_control/build/qtcreator-debug`
-   - Release: `D:/CodeRepositories/edoyun/remote_control/build/qtcreator-release`
+   - Debug: `D:/CodeRepositories/edoyun/remote_control/build/Desktop_Qt_6_7_3_MSVC2022_64bit-Debug`
+   - Release: `D:/CodeRepositories/edoyun/remote_control/build/Desktop_Qt_6_7_3_MSVC2022_64bit-Release`
 4. Build targets:
    - `remote_client_qt`
    - `remote_server_qt`
@@ -13,7 +13,7 @@
 
 Recommended startup targets:
 
-- Daily client debugging: `remote_client_qt`
+- Daily one-click debug: `remote_client_qt`
 - Daily server debugging: `remote_server_qt`
 - Regression check: `remote_smoke_test`
 
@@ -36,10 +36,15 @@ Recommended run arguments:
 
 Suggested workflow in Qt Creator:
 
-1. Use the combined wrapper when you want one click to launch both server and client.
-2. Use `remote_client_qt` alone when you want one-click localhost run/debug from the Qt Creator toolbar.
+1. Set `remote_client_qt` as the startup target when you want one-click localhost debugging from the Qt Creator toolbar.
+2. Use the combined wrapper when you want one click to launch both server and client without changing startup targets.
 3. Use `remote_server_qt` alone when you need to debug the server.
 4. Use `remote_smoke_test` for quick protocol regression checks.
+
+Recommended split:
+
+- Toolbar `Debug`: `remote_client_qt`
+- Toolbar `Run`: a `Custom Executable` that calls `run_stack.ps1`
 
 Exact Run Settings to create in Qt Creator:
 
@@ -70,8 +75,9 @@ Exact Run Settings to create in Qt Creator:
 
 6. `remote stack`
    - Program: `powershell.exe`
-   - Command line arguments: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_stack.ps1" -NoTray`
+   - Command line arguments: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_stack.ps1" -BuildDir "%{buildDir}" -NoTray`
    - Working directory: `%{sourceDir}`
+   - Environment: `QT_CREATOR_BUILD_DIR=%{buildDir}`
    - Result: starts the server first and then launches the client
 
 If you prefer not to manage PATH manually in Qt Creator, use the PowerShell wrappers instead:
@@ -80,11 +86,11 @@ If you prefer not to manage PATH manually in Qt Creator, use the PowerShell wrap
 2. Program:
    - `powershell.exe`
 3. Arguments examples:
-   - Client: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_client.ps1"`
-   - Server: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_server.ps1"`
-   - Server no tray: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_server.ps1" -NoTray`
-   - Server + client: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_stack.ps1" -NoTray`
-   - Smoke test: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_smoke_test.ps1"`
+   - Client: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_client.ps1" -BuildDir "%{buildDir}"`
+   - Server: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_server.ps1" -BuildDir "%{buildDir}"`
+   - Server no tray: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_server.ps1" -BuildDir "%{buildDir}" -NoTray`
+   - Server + client: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_stack.ps1" -BuildDir "%{buildDir}" -NoTray`
+   - Smoke test: `-ExecutionPolicy Bypass -File "%{sourceDir}/scripts/run_smoke_test.ps1" -BuildDir "%{buildDir}"`
 4. Working directory:
    - `%{sourceDir}`
 

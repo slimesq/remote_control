@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/Protocol.h"
+#include "Protocol.h"
 
 #include <QMainWindow>
 #include <memory>
@@ -22,6 +22,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
+    void setEndpoint(const QString& host, quint16 port);
 
 private:
     QProgressDialog* ensureDownloadProgressDialog();

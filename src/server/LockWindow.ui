@@ -110,8 +110,8 @@
         <property name="styleSheet">
          <string notr="true">color: #bbbbbb;</string>
         </property>
-        <property name="text">
-         <string>This session is currently restricted. Local controls will return after the system is unlocked.</string>
+       <property name="text">
+         <string>This session is currently restricted. Press Ctrl+C to unlock locally or wait for a remote unlock command.</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>

@@ -31,6 +31,9 @@ ui_*.h
 .qt/
 CMakeUserPresets.json
 
+# Claude Code
+.claude/
+
 # Binaries
 *.exe
 *.dll

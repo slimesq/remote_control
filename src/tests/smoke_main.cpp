@@ -1,5 +1,5 @@
-#include "../common/Packet.h"
-#include "../common/Protocol.h"
+#include "Packet.h"
+#include "Protocol.h"
 
 #include <QBuffer>
 #include <QCoreApplication>

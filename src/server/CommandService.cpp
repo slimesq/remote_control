@@ -83,7 +83,7 @@ void sendMouseFlag(DWORD flag)
 
 CommandService::CommandService(QObject* parent)
     : QObject(parent)
-    , m_lockWindow(new LockWindow())
+    , m_lockWindow(std::make_unique<LockWindow>())
 {
 }
 
@@ -179,6 +179,7 @@ QList<remoteqt::Packet> CommandService::handleListDirectory(const QByteArray& pa
         packets.append(remoteqt::Packet(remoteqt::Command::ListDirectory, entry.toPayload()));
     }
 
+    // A final marker packet tells the client that the streamed listing is complete.
     remoteqt::FileEntry endEntry;
     endEntry.hasNext = false;
     packets.append(remoteqt::Packet(remoteqt::Command::ListDirectory, endEntry.toPayload()));
@@ -204,6 +205,7 @@ QList<remoteqt::Packet> CommandService::handleDownloadFile(const QByteArray& pay
         return packets;
     }
 
+    // Downloads start with a size header so the client can pre-validate and track progress.
     packets.append(remoteqt::Packet(remoteqt::Command::DownloadFile, sizeToPayload(file.size())));
     while (!file.atEnd()) {
         packets.append(remoteqt::Packet(remoteqt::Command::DownloadFile, file.read(1024)));
