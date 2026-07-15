@@ -1,14 +1,21 @@
-file(GLOB_RECURSE REMOTE_SMOKE_TEST_SOURCES CONFIGURE_DEPENDS
-    ${PROJECT_SOURCE_DIR}/src/tests/*.cpp
+add_executable(RemoteControlSmokeTest
+    SmokeTestMain.cpp
 )
 
-qt_add_executable(remote_smoke_test
-    ${REMOTE_SMOKE_TEST_SOURCES}
+target_link_libraries(RemoteControlSmokeTest PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Network
+    RemoteControlCommon
 )
 
-target_link_libraries(remote_smoke_test PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Network
-    remote_common
+add_executable(RemoteControlProtocolTests
+    ProtocolTestMain.cpp
 )
+
+target_link_libraries(RemoteControlProtocolTests PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    RemoteControlCommon
+)
+
+add_test(NAME RemoteControlProtocolTests COMMAND RemoteControlProtocolTests)

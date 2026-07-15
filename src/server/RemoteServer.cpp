@@ -6,33 +6,33 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
-RemoteServer::RemoteServer(QObject* parent)
-    : QObject(parent)
+RemoteServer::RemoteServer(QObject* _parent)
+    : QObject(_parent)
     , m_server(new QTcpServer(this))
     , m_commandService(new CommandService(this))
 {
-    connect(m_server, &QTcpServer::newConnection, this, &RemoteServer::onNewConnection);
+    connect(this->m_server, &QTcpServer::newConnection, this, &RemoteServer::onNewConnection);
 }
 
-bool RemoteServer::start(quint16 port)
+bool RemoteServer::start(quint16 _port)
 {
-    return m_server->listen(QHostAddress::Any, port);
+    return this->m_server->listen(QHostAddress::Any, _port);
 }
 
 quint16 RemoteServer::listeningPort() const
 {
-    return m_server->serverPort();
+    return this->m_server->serverPort();
 }
 
 CommandService* RemoteServer::commandService() const
 {
-    return m_commandService;
+    return this->m_commandService;
 }
 
 void RemoteServer::onNewConnection()
 {
-    while (m_server->hasPendingConnections()) {
-        auto* socket = m_server->nextPendingConnection();
-        new RemoteSession(socket, m_commandService, this);
+    while (this->m_server->hasPendingConnections()) {
+        auto* socket = this->m_server->nextPendingConnection();
+        new RemoteSession(socket, this->m_commandService, this);
     }
 }

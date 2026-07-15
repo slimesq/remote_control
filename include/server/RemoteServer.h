@@ -10,9 +10,9 @@ class RemoteServer : public QObject
     Q_OBJECT
 
 public:
-    explicit RemoteServer(QObject* parent = nullptr);
+    explicit RemoteServer(QObject* _parent = nullptr);
 
-    bool start(quint16 port = 9527);
+    bool start(quint16 _port = 9527);
     quint16 listeningPort() const;
     CommandService* commandService() const;
 

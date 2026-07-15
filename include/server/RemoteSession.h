@@ -13,7 +13,7 @@ class RemoteSession : public QObject
     Q_OBJECT
 
 public:
-    RemoteSession(QTcpSocket* socket, CommandService* commandService, QObject* parent = nullptr);
+    RemoteSession(QTcpSocket* _socket, CommandService* _commandService, QObject* _parent = nullptr);
 
 private slots:
     void onReadyRead();
@@ -21,7 +21,7 @@ private slots:
     void onIdleTimeout();
 
 private:
-    void processPacket(const remoteqt::Packet& packet);
+    void processPacket(const remote_control::Packet& _packet);
     void restartIdleTimer();
 
     QTcpSocket* m_socket = nullptr;

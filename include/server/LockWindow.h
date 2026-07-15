@@ -14,7 +14,7 @@ class LockWindow : public QWidget
     Q_OBJECT
 
 public:
-    explicit LockWindow(QWidget* parent = nullptr);
+    explicit LockWindow(QWidget* _parent = nullptr);
     ~LockWindow() override;
 
     void lockMachine();
@@ -22,12 +22,12 @@ public:
     bool isLocked() const;
 
 protected:
-    void closeEvent(QCloseEvent* event) override;
-    void focusOutEvent(QFocusEvent* event) override;
-    void keyPressEvent(QKeyEvent* event) override;
+    void closeEvent(QCloseEvent* _event) override;
+    void focusOutEvent(QFocusEvent* _event) override;
+    void keyPressEvent(QKeyEvent* _event) override;
 
 private:
-    void updateSystemUi(bool locked);
+    void updateSystemUi(bool _locked);
 
     std::unique_ptr<Ui::LockWindow> m_ui;
     bool m_locked = false;

@@ -22,96 +22,96 @@ constexpr int LoadedRole = Qt::UserRole + 1;
 
 }
 
-MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(QWidget* _parent)
+    : QMainWindow(_parent)
     , m_client(new RemoteClient(this))
     , m_ui(std::make_unique<Ui::MainWindow>())
 {
-    m_ui->setupUi(this);
-    m_ui->mainSplitter->setStretchFactor(0, 3);
-    m_ui->mainSplitter->setStretchFactor(1, 2);
-    m_ui->treeWidget->header()->setStretchLastSection(true);
-    m_ui->treeWidget->header()->setMinimumSectionSize(140);
-    m_ui->fileTable->horizontalHeader()->setStretchLastSection(true);
-    m_ui->fileTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_ui->fileTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    this->m_ui->setupUi(this);
+    this->m_ui->mainSplitter->setStretchFactor(0, 3);
+    this->m_ui->mainSplitter->setStretchFactor(1, 2);
+    this->m_ui->treeWidget->header()->setStretchLastSection(true);
+    this->m_ui->treeWidget->header()->setMinimumSectionSize(140);
+    this->m_ui->fileTable->horizontalHeader()->setStretchLastSection(true);
+    this->m_ui->fileTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    this->m_ui->fileTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
 
     statusBar()->showMessage(tr("Enter a host, test the connection, and then browse the remote machine."));
-    wireSignals();
-    m_client->setEndpoint(m_ui->hostEdit->text().trimmed(), static_cast<quint16>(m_ui->portSpin->value()));
-    updateActionState();
+    this->wireSignals();
+    this->m_client->setEndpoint(this->m_ui->hostEdit->text().trimmed(), static_cast<quint16>(this->m_ui->portSpin->value()));
+    this->updateActionState();
 }
 
 MainWindow::~MainWindow() = default;
 
-void MainWindow::setEndpoint(const QString& host, quint16 port)
+void MainWindow::setEndpoint(const QString& _host, quint16 _port)
 {
-    m_ui->hostEdit->setText(host);
-    m_ui->portSpin->setValue(port);
-    m_client->setEndpoint(host.trimmed(), port);
+    this->m_ui->hostEdit->setText(_host);
+    this->m_ui->portSpin->setValue(_port);
+    this->m_client->setEndpoint(_host.trimmed(), _port);
 }
 
 QProgressDialog* MainWindow::ensureDownloadProgressDialog()
 {
-    if (!m_downloadProgress) {
-        m_downloadProgress = new QProgressDialog(tr("Downloading..."), QString(), 0, 100, this);
-        m_downloadProgress->setAutoClose(false);
-        m_downloadProgress->setAutoReset(false);
-        m_downloadProgress->setMinimumDuration(0);
-        m_downloadProgress->setWindowModality(Qt::WindowModal);
-        m_downloadProgress->hide();
+    if (!this->m_downloadProgress) {
+        this->m_downloadProgress = new QProgressDialog(tr("Downloading..."), QString(), 0, 100, this);
+        this->m_downloadProgress->setAutoClose(false);
+        this->m_downloadProgress->setAutoReset(false);
+        this->m_downloadProgress->setMinimumDuration(0);
+        this->m_downloadProgress->setWindowModality(Qt::WindowModal);
+        this->m_downloadProgress->hide();
     }
 
-    return m_downloadProgress;
+    return this->m_downloadProgress;
 }
 
-void MainWindow::setBusyState(bool busy, const QString& message)
+void MainWindow::setBusyState(bool _busy, const QString& _message)
 {
-    m_busy = busy;
-    if (busy && !message.isEmpty()) {
-        statusBar()->showMessage(message);
+    this->m_busy = _busy;
+    if (_busy && !_message.isEmpty()) {
+        statusBar()->showMessage(_message);
     }
-    updateActionState();
+    this->updateActionState();
 }
 
 void MainWindow::updateActionState()
 {
-    const bool hasEndpoint = !m_ui->hostEdit->text().trimmed().isEmpty() && m_ui->portSpin->value() > 0;
-    const bool canBrowseRemote = hasEndpoint && m_connectionVerified;
-    const bool hasSelectedFile = !currentSelectedFilePath().isEmpty();
+    const bool hasEndpoint = !this->m_ui->hostEdit->text().trimmed().isEmpty() && this->m_ui->portSpin->value() > 0;
+    const bool canBrowseRemote = hasEndpoint && this->m_connectionVerified;
+    const bool hasSelectedFile = !this->currentSelectedFilePath().isEmpty();
 
-    m_ui->testButton->setEnabled(hasEndpoint && !m_busy);
-    m_ui->refreshButton->setEnabled(canBrowseRemote && !m_busy);
-    m_ui->watchButton->setEnabled(canBrowseRemote && !m_busy);
-    m_ui->treeWidget->setEnabled(canBrowseRemote && !m_busy);
-    m_ui->fileTable->setEnabled(canBrowseRemote && m_ui->fileTable->rowCount() > 0 && !m_busy);
-    m_ui->openFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !m_busy);
-    m_ui->downloadFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !m_busy);
-    m_ui->deleteFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !m_busy);
+    this->m_ui->testButton->setEnabled(hasEndpoint && !this->m_busy);
+    this->m_ui->refreshButton->setEnabled(canBrowseRemote && !this->m_busy);
+    this->m_ui->watchButton->setEnabled(canBrowseRemote && !this->m_busy);
+    this->m_ui->treeWidget->setEnabled(canBrowseRemote && !this->m_busy);
+    this->m_ui->fileTable->setEnabled(canBrowseRemote && this->m_ui->fileTable->rowCount() > 0 && !this->m_busy);
+    this->m_ui->openFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !this->m_busy);
+    this->m_ui->downloadFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !this->m_busy);
+    this->m_ui->deleteFileButton->setEnabled(canBrowseRemote && hasSelectedFile && !this->m_busy);
 }
 
 QString MainWindow::currentSelectedFilePath() const
 {
-    auto* item = m_ui->fileTable->currentItem();
+    auto* item = this->m_ui->fileTable->currentItem();
     if (!item)
         return {};
-    auto* nameItem = m_ui->fileTable->item(item->row(), 0);
+    auto* nameItem = this->m_ui->fileTable->item(item->row(), 0);
     return nameItem ? nameItem->data(Qt::UserRole).toString() : QString {};
 }
 
 QString MainWindow::currentSelectedFileName() const
 {
-    auto* item = m_ui->fileTable->currentItem();
+    auto* item = this->m_ui->fileTable->currentItem();
     if (!item)
         return {};
-    auto* nameItem = m_ui->fileTable->item(item->row(), 0);
+    auto* nameItem = this->m_ui->fileTable->item(item->row(), 0);
     return nameItem ? nameItem->text() : QString {};
 }
 
 void MainWindow::downloadSelectedFile()
 {
-    const QString filePath = currentSelectedFilePath();
-    const QString fileName = currentSelectedFileName();
+    const QString filePath = this->currentSelectedFilePath();
+    const QString fileName = this->currentSelectedFileName();
     if (filePath.isEmpty()) {
         return;
     }
@@ -121,190 +121,190 @@ void MainWindow::downloadSelectedFile()
         return;
     }
 
-    auto* progressDialog = ensureDownloadProgressDialog();
+    auto* progressDialog = this->ensureDownloadProgressDialog();
     progressDialog->setLabelText(tr("Downloading: %1").arg(filePath));
     progressDialog->setValue(0);
     progressDialog->show();
-    setBusyState(true, tr("Downloading: %1").arg(filePath));
-    m_client->downloadFile(filePath, savePath);
+    this->setBusyState(true, tr("Downloading: %1").arg(filePath));
+    this->m_client->downloadFile(filePath, savePath);
 }
 
 void MainWindow::deleteSelectedFile()
 {
-    const QString filePath = currentSelectedFilePath();
+    const QString filePath = this->currentSelectedFilePath();
     if (filePath.isEmpty()) {
         return;
     }
-    setBusyState(true, tr("Deleting: %1").arg(filePath));
-    m_client->deleteFile(filePath);
+    this->setBusyState(true, tr("Deleting: %1").arg(filePath));
+    this->m_client->deleteFile(filePath);
 }
 
 void MainWindow::clearRemoteView()
 {
-    m_ui->treeWidget->clear();
-    m_ui->fileTable->setRowCount(0);
-    updateActionState();
+    this->m_ui->treeWidget->clear();
+    this->m_ui->fileTable->setRowCount(0);
+    this->updateActionState();
 }
 
 void MainWindow::showWatchWindow()
 {
-    if (!m_watchWindow) {
-        m_watchWindow = new WatchWindow(m_client, this);
+    if (!this->m_watchWindow) {
+        this->m_watchWindow = new WatchWindow(this->m_client, this);
     }
-    m_watchWindow->show();
-    m_watchWindow->raise();
-    m_watchWindow->activateWindow();
+    this->m_watchWindow->show();
+    this->m_watchWindow->raise();
+    this->m_watchWindow->activateWindow();
 }
 
 void MainWindow::openSelectedFile()
 {
-    const QString filePath = currentSelectedFilePath();
+    const QString filePath = this->currentSelectedFilePath();
     if (filePath.isEmpty()) {
         return;
     }
-    setBusyState(true, tr("Opening: %1").arg(filePath));
-    m_client->runFile(filePath);
+    this->setBusyState(true, tr("Opening: %1").arg(filePath));
+    this->m_client->runFile(filePath);
 }
 
 void MainWindow::wireSignals()
 {
-    connect(m_ui->hostEdit, &QLineEdit::textChanged, this, [this] {
-        m_connectionVerified = false;
-        m_client->setEndpoint(m_ui->hostEdit->text().trimmed(), static_cast<quint16>(m_ui->portSpin->value()));
-        clearRemoteView();
+    connect(this->m_ui->hostEdit, &QLineEdit::textChanged, this, [this] {
+        this->m_connectionVerified = false;
+        this->m_client->setEndpoint(this->m_ui->hostEdit->text().trimmed(), static_cast<quint16>(this->m_ui->portSpin->value()));
+        this->clearRemoteView();
         statusBar()->showMessage(tr("Connection settings changed. Test the connection again."));
     });
-    connect(m_ui->portSpin, &QSpinBox::valueChanged, this, [this](int) {
-        m_connectionVerified = false;
-        m_client->setEndpoint(m_ui->hostEdit->text().trimmed(), static_cast<quint16>(m_ui->portSpin->value()));
-        clearRemoteView();
+    connect(this->m_ui->portSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int) {
+        this->m_connectionVerified = false;
+        this->m_client->setEndpoint(this->m_ui->hostEdit->text().trimmed(), static_cast<quint16>(this->m_ui->portSpin->value()));
+        this->clearRemoteView();
         statusBar()->showMessage(tr("Connection settings changed. Test the connection again."));
     });
 
-    connect(m_ui->testButton, &QPushButton::clicked, this, [this] {
-        setBusyState(true, tr("Testing the connection..."));
-        m_client->testConnection();
+    connect(this->m_ui->testButton, &QPushButton::clicked, this, [this] {
+        this->setBusyState(true, tr("Testing the connection..."));
+        this->m_client->testConnection();
     });
-    connect(m_ui->refreshButton, &QPushButton::clicked, this, [this] {
-        setBusyState(true, tr("Loading drive list..."));
-        m_client->requestDrives();
+    connect(this->m_ui->refreshButton, &QPushButton::clicked, this, [this] {
+        this->setBusyState(true, tr("Loading drive list..."));
+        this->m_client->requestDrives();
     });
-    connect(m_ui->watchButton, &QPushButton::clicked, this, &MainWindow::showWatchWindow);
-    connect(m_ui->openFileButton, &QPushButton::clicked, this, &MainWindow::openSelectedFile);
-    connect(m_ui->downloadFileButton, &QPushButton::clicked, this, &MainWindow::downloadSelectedFile);
-    connect(m_ui->deleteFileButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedFile);
+    connect(this->m_ui->watchButton, &QPushButton::clicked, this, &MainWindow::showWatchWindow);
+    connect(this->m_ui->openFileButton, &QPushButton::clicked, this, &MainWindow::openSelectedFile);
+    connect(this->m_ui->downloadFileButton, &QPushButton::clicked, this, &MainWindow::downloadSelectedFile);
+    connect(this->m_ui->deleteFileButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedFile);
 
-    connect(m_ui->treeWidget, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* item) {
-        requestSelectedDirectory(item);
+    connect(this->m_ui->treeWidget, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* _item) {
+        this->requestSelectedDirectory(_item);
     });
-    connect(m_ui->treeWidget, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item) {
-        requestSelectedDirectory(item);
+    connect(this->m_ui->treeWidget, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* _item) {
+        this->requestSelectedDirectory(_item);
     });
-    connect(m_ui->treeWidget, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem* item) {
-        if (!item->data(0, LoadedRole).toBool()) {
-            requestSelectedDirectory(item);
+    connect(this->m_ui->treeWidget, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem* _item) {
+        if (!_item->data(0, LoadedRole).toBool()) {
+            this->requestSelectedDirectory(_item);
         }
     });
-    connect(m_ui->fileTable, &QTableWidget::itemSelectionChanged, this, &MainWindow::updateActionState);
+    connect(this->m_ui->fileTable, &QTableWidget::itemSelectionChanged, this, &MainWindow::updateActionState);
 
-    connect(m_client, &RemoteClient::connectionTested, this, [this](bool success, const QString& message) {
-        m_connectionVerified = success;
-        if (!success) {
-            clearRemoteView();
+    connect(this->m_client, &RemoteClient::connectionTested, this, [this](bool _success, const QString& _message) {
+        this->m_connectionVerified = _success;
+        if (!_success) {
+            this->clearRemoteView();
         }
-        setBusyState(false);
-        updateActionState();
-        statusBar()->showMessage(message, 3000);
-        QMessageBox::information(this, success ? tr("Connection Succeeded") : tr("Connection Failed"), message);
+        this->setBusyState(false);
+        this->updateActionState();
+        statusBar()->showMessage(_message, 3000);
+        QMessageBox::information(this, _success ? tr("Connection Succeeded") : tr("Connection Failed"), _message);
     });
-    connect(m_client, &RemoteClient::drivesListed, this, &MainWindow::populateDriveTree);
-    connect(m_client, &RemoteClient::directoryListed, this, &MainWindow::updateDirectoryView);
-    connect(m_client, &RemoteClient::requestFailed, this, [this](remoteqt::Command command, const QString&, const QString& message) {
-        if (command == remoteqt::Command::TestConnection || command == remoteqt::Command::DownloadFile) {
-            statusBar()->showMessage(message, 5000);
+    connect(this->m_client, &RemoteClient::drivesListed, this, &MainWindow::populateDriveTree);
+    connect(this->m_client, &RemoteClient::directoryListed, this, &MainWindow::updateDirectoryView);
+    connect(this->m_client, &RemoteClient::requestFailed, this, [this](remote_control::Command _command, const QString&, const QString& _message) {
+        if (_command == remote_control::Command::TestConnection || _command == remote_control::Command::DownloadFile) {
+            statusBar()->showMessage(_message, 5000);
             return;
         }
-        setBusyState(false);
-        updateActionState();
-        statusBar()->showMessage(message, 5000);
-        QMessageBox::warning(this, tr("Operation Failed"), message);
+        this->setBusyState(false);
+        this->updateActionState();
+        statusBar()->showMessage(_message, 5000);
+        QMessageBox::warning(this, tr("Operation Failed"), _message);
     });
-    connect(m_client, &RemoteClient::commandCompleted, this, [this](remoteqt::Command command, const QString& context, const QString& message) {
-        setBusyState(false);
-        statusBar()->showMessage(message, 3000);
-        if (command == remoteqt::Command::DeleteFile) {
-            if (auto* item = m_ui->treeWidget->currentItem()) {
-                requestSelectedDirectory(item);
+    connect(this->m_client, &RemoteClient::commandCompleted, this, [this](remote_control::Command _command, const QString& _context, const QString& _message) {
+        this->setBusyState(false);
+        statusBar()->showMessage(_message, 3000);
+        if (_command == remote_control::Command::DeleteFile) {
+            if (auto* item = this->m_ui->treeWidget->currentItem()) {
+                this->requestSelectedDirectory(item);
             }
-        } else if (command == remoteqt::Command::RunFile) {
-            QMessageBox::information(this, tr("Open File"), tr("Open request sent: %1").arg(context));
+        } else if (_command == remote_control::Command::RunFile) {
+            QMessageBox::information(this, tr("Open File"), tr("Open request sent: %1").arg(_context));
         }
     });
-    connect(m_client, &RemoteClient::downloadProgress, this, [this](const QString&, qint64 received, qint64 total) {
-        if (!m_downloadProgress) {
+    connect(this->m_client, &RemoteClient::downloadProgress, this, [this](const QString&, qint64 _received, qint64 _total) {
+        if (!this->m_downloadProgress) {
             return;
         }
-        m_downloadProgress->setMaximum(static_cast<int>(qMax<qint64>(1, total)));
-        m_downloadProgress->setValue(static_cast<int>(received));
+        this->m_downloadProgress->setMaximum(static_cast<int>(qMax<qint64>(1, _total)));
+        this->m_downloadProgress->setValue(static_cast<int>(_received));
     });
-    connect(m_client, &RemoteClient::downloadFinished, this, [this](const QString&, const QString& localPath, bool success, const QString& message) {
-        setBusyState(false);
-        if (m_downloadProgress) {
-            m_downloadProgress->hide();
+    connect(this->m_client, &RemoteClient::downloadFinished, this, [this](const QString&, const QString& _localPath, bool _success, const QString& _message) {
+        this->setBusyState(false);
+        if (this->m_downloadProgress) {
+            this->m_downloadProgress->hide();
         }
-        if (success) {
-            QMessageBox::information(this, tr("Download Completed"), tr("%1\n%2").arg(message, localPath));
+        if (_success) {
+            QMessageBox::information(this, tr("Download Completed"), tr("%1\n%2").arg(_message, _localPath));
         } else {
-            QMessageBox::warning(this, tr("Download Failed"), message);
+            QMessageBox::warning(this, tr("Download Failed"), _message);
         }
     });
 
-    connect(m_ui->fileTable, &QTableWidget::itemDoubleClicked, this, [this](QTableWidgetItem*) {
-        openSelectedFile();
+    connect(this->m_ui->fileTable, &QTableWidget::itemDoubleClicked, this, [this](QTableWidgetItem*) {
+        this->openSelectedFile();
     });
-    connect(m_ui->fileTable, &QTableWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
-        auto* item = m_ui->fileTable->itemAt(pos);
+    connect(this->m_ui->fileTable, &QTableWidget::customContextMenuRequested, this, [this](const QPoint& _pos) {
+        auto* item = this->m_ui->fileTable->itemAt(_pos);
         if (!item) {
             return;
         }
-        m_ui->fileTable->setCurrentItem(item);
+        this->m_ui->fileTable->setCurrentItem(item);
         QMenu menu(this);
         QAction* downloadAction = menu.addAction(tr("Download File"));
         QAction* deleteAction = menu.addAction(tr("Delete File"));
         QAction* runAction = menu.addAction(tr("Open File"));
-        QAction* chosen = menu.exec(m_ui->fileTable->viewport()->mapToGlobal(pos));
+        QAction* chosen = menu.exec(this->m_ui->fileTable->viewport()->mapToGlobal(_pos));
         if (chosen == downloadAction) {
-            downloadSelectedFile();
+            this->downloadSelectedFile();
         } else if (chosen == deleteAction) {
-            deleteSelectedFile();
+            this->deleteSelectedFile();
         } else if (chosen == runAction) {
-            openSelectedFile();
+            this->openSelectedFile();
         }
     });
 }
 
-void MainWindow::requestSelectedDirectory(QTreeWidgetItem* item)
+void MainWindow::requestSelectedDirectory(QTreeWidgetItem* _item)
 {
-    if (!item) {
+    if (!_item) {
         return;
     }
-    const QString path = item->data(0, PathRole).toString();
+    const QString path = _item->data(0, PathRole).toString();
     if (path.isEmpty()) {
         return;
     }
-    setBusyState(true, tr("Loading: %1").arg(path));
-    m_client->requestDirectory(path);
+    this->setBusyState(true, tr("Loading: %1").arg(path));
+    this->m_client->requestDirectory(path);
 }
 
-void MainWindow::populateDriveTree(const QStringList& drives)
+void MainWindow::populateDriveTree(const QStringList& _drives)
 {
-    setBusyState(false);
-    m_ui->treeWidget->clear();
-    m_ui->fileTable->setRowCount(0);
+    this->setBusyState(false);
+    this->m_ui->treeWidget->clear();
+    this->m_ui->fileTable->setRowCount(0);
     QTreeWidgetItem* firstDriveItem = nullptr;
-    for (const QString& drive : drives) {
-        const QString normalized = normalizeDrive(drive);
-        auto* item = new QTreeWidgetItem(m_ui->treeWidget);
+    for (const QString& drive : _drives) {
+        const QString normalized = this->normalizeDrive(drive);
+        auto* item = new QTreeWidgetItem(this->m_ui->treeWidget);
         item->setText(0, normalized);
         item->setData(0, PathRole, normalized + '\\');
         item->setData(0, LoadedRole, false);
@@ -313,62 +313,62 @@ void MainWindow::populateDriveTree(const QStringList& drives)
             firstDriveItem = item;
         }
     }
-    updateActionState();
+    this->updateActionState();
     if (!firstDriveItem) {
         statusBar()->showMessage(tr("No drives were reported by the remote host."), 5000);
         return;
     }
 
-    m_ui->treeWidget->setCurrentItem(firstDriveItem);
-    requestSelectedDirectory(firstDriveItem);
+    this->m_ui->treeWidget->setCurrentItem(firstDriveItem);
+    this->requestSelectedDirectory(firstDriveItem);
 }
 
-void MainWindow::updateDirectoryView(const QString& path, const QList<remoteqt::FileEntry>& entries)
+void MainWindow::updateDirectoryView(const QString& _path, const QList<remote_control::FileEntry>& _entries)
 {
-    setBusyState(false);
-    auto* item = findItemByPath(path);
+    this->setBusyState(false);
+    auto* item = this->findItemByPath(_path);
     if (!item) {
         return;
     }
 
     item->takeChildren();
     item->setData(0, LoadedRole, true);
-    m_ui->fileTable->setRowCount(0);
+    this->m_ui->fileTable->setRowCount(0);
 
-    for (const remoteqt::FileEntry& entry : entries) {
+    for (const remote_control::FileEntry& entry : _entries) {
         if (entry.fileName == "." || entry.fileName == "..") {
             continue;
         }
         if (entry.isDirectory) {
             auto* child = new QTreeWidgetItem(item);
             child->setText(0, entry.fileName);
-            child->setData(0, PathRole, joinPath(path, entry.fileName));
+            child->setData(0, PathRole, this->joinPath(_path, entry.fileName));
             child->setData(0, LoadedRole, false);
             new QTreeWidgetItem(child, QStringList { tr("Loading...") });
         } else {
-            const int row = m_ui->fileTable->rowCount();
-            m_ui->fileTable->insertRow(row);
+            const int row = this->m_ui->fileTable->rowCount();
+            this->m_ui->fileTable->insertRow(row);
 
             auto* nameItem = new QTableWidgetItem(entry.fileName);
-            nameItem->setData(Qt::UserRole, joinPath(path, entry.fileName));
+            nameItem->setData(Qt::UserRole, this->joinPath(_path, entry.fileName));
             nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-            m_ui->fileTable->setItem(row, 0, nameItem);
+            this->m_ui->fileTable->setItem(row, 0, nameItem);
 
             auto* typeItem = new QTableWidgetItem(tr("File"));
             typeItem->setFlags(typeItem->flags() & ~Qt::ItemIsEditable);
-            m_ui->fileTable->setItem(row, 1, typeItem);
+            this->m_ui->fileTable->setItem(row, 1, typeItem);
         }
     }
     item->setExpanded(true);
-    updateActionState();
-    statusBar()->showMessage(tr("Directory updated: %1").arg(path), 3000);
+    this->updateActionState();
+    statusBar()->showMessage(tr("Directory updated: %1").arg(_path), 3000);
 }
 
-QTreeWidgetItem* MainWindow::findItemByPath(const QString& path) const
+QTreeWidgetItem* MainWindow::findItemByPath(const QString& _path) const
 {
-    QTreeWidgetItemIterator it(m_ui->treeWidget);
+    QTreeWidgetItemIterator it(this->m_ui->treeWidget);
     while (*it) {
-        if ((*it)->data(0, PathRole).toString().compare(path, Qt::CaseInsensitive) == 0) {
+        if ((*it)->data(0, PathRole).toString().compare(_path, Qt::CaseInsensitive) == 0) {
             return *it;
         }
         ++it;
@@ -376,20 +376,20 @@ QTreeWidgetItem* MainWindow::findItemByPath(const QString& path) const
     return nullptr;
 }
 
-QString MainWindow::normalizeDrive(const QString& drive)
+QString MainWindow::normalizeDrive(const QString& _drive)
 {
-    QString value = drive.trimmed();
+    QString value = _drive.trimmed();
     if (!value.endsWith(':')) {
         value.append(':');
     }
     return value;
 }
 
-QString MainWindow::joinPath(const QString& basePath, const QString& fileName)
+QString MainWindow::joinPath(const QString& _basePath, const QString& _fileName)
 {
-    QString path = basePath;
+    QString path = _basePath;
     if (!path.endsWith('\\') && !path.endsWith('/')) {
         path.append('\\');
     }
-    return path + fileName;
+    return path + _fileName;
 }

@@ -18,22 +18,22 @@ constexpr int ProbeTimeoutMs = 250;
  *
  * The function first probes the specified host and port. If a server is already
  * listening, it returns immediately. Otherwise, it tries to start
- * remote_server_qt.exe from the client executable directory.
+ * RemoteControlServer.exe from the client executable directory.
  *
- * @param host Host name or IP address to probe.
- * @param port TCP port used by the local server.
- * @param noTray When true, starts the server with --no-tray so no system tray
+ * @param _host Host name or IP address to probe.
+ * @param _port TCP port used by the local server.
+ * @param _noTray When true, starts the server with --no-tray so no system tray
  * icon is shown.
- * @param errorMessage Optional output parameter that receives a user-facing
+ * @param _errorMessage Optional output parameter that receives a user-facing
  * error message when startup fails.
  * @return true if an existing server was found or a new server was started;
  * false otherwise.
  */
-bool tryStartLocalServer(const QString &host, quint16 port, bool noTray,
-                         QString *errorMessage) {
+bool tryStartLocalServer(const QString &_host, quint16 _port, bool _noTray,
+                         QString *_errorMessage) {
     // Prefer reusing an already-running local server so toolbar runs stay cheap.
     QTcpSocket probeSocket;
-    probeSocket.connectToHost(host, port);
+    probeSocket.connectToHost(_host, _port);
     if (probeSocket.waitForConnected(ProbeTimeoutMs)) {
         probeSocket.disconnectFromHost();
         return true;
@@ -41,24 +41,24 @@ bool tryStartLocalServer(const QString &host, quint16 port, bool noTray,
 
     const QString serverPath =
         QDir(QCoreApplication::applicationDirPath())
-                                   .filePath(QStringLiteral("remote_server_qt.exe"));
+                                   .filePath(QStringLiteral("RemoteControlServer.exe"));
     if (!QFileInfo::exists(serverPath)) {
-        if (errorMessage) {
-            *errorMessage = QObject::tr("The server executable was not found: %1")
+        if (_errorMessage) {
+            *_errorMessage = QObject::tr("The server executable was not found: %1")
                                 .arg(serverPath);
         }
         return false;
     }
 
-    QStringList arguments{QStringLiteral("--port"), QString::number(port)};
-    if (noTray) {
+    QStringList arguments{QStringLiteral("--port"), QString::number(_port)};
+    if (_noTray) {
         arguments.push_back(QStringLiteral("--no-tray"));
     }
 
     if (!QProcess::startDetached(serverPath, arguments,
                                  QFileInfo(serverPath).absolutePath())) {
-        if (errorMessage) {
-            *errorMessage = QObject::tr("Failed to start the local server.");
+        if (_errorMessage) {
+            *_errorMessage = QObject::tr("Failed to start the local server.");
         }
         return false;
     }

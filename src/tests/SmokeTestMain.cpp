@@ -23,25 +23,25 @@
 namespace {
 
 struct ResponseBundle {
-    QList<remoteqt::Packet> packets;
+    QList<remote_control::Packet> packets;
     QString error;
 };
 
 ResponseBundle sendCommand(
-    const QString& host,
-    quint16 port,
-    remoteqt::Command command,
-    const QByteArray& payload = {})
+    const QString& _host,
+    quint16 _port,
+    remote_control::Command _command,
+    const QByteArray& _payload = {})
 {
     ResponseBundle result;
     QTcpSocket socket;
-    socket.connectToHost(host, port);
+    socket.connectToHost(_host, _port);
     if (!socket.waitForConnected(5000)) {
         result.error = socket.errorString();
         return result;
     }
 
-    socket.write(remoteqt::Packet(command, payload).serialize());
+    socket.write(remote_control::Packet(_command, _payload).serialize());
     if (!socket.waitForBytesWritten(5000)) {
         result.error = socket.errorString();
         return result;
@@ -58,7 +58,7 @@ ResponseBundle sendCommand(
         }
         buffer.append(socket.readAll());
         while (true) {
-            auto packet = remoteqt::Packet::tryParse(buffer);
+            auto packet = remote_control::Packet::tryParse(buffer);
             if (!packet.has_value()) {
                 break;
             }
@@ -68,7 +68,7 @@ ResponseBundle sendCommand(
 
     if (!buffer.isEmpty()) {
         while (true) {
-            auto packet = remoteqt::Packet::tryParse(buffer);
+            auto packet = remote_control::Packet::tryParse(buffer);
             if (!packet.has_value()) {
                 break;
             }
@@ -79,22 +79,22 @@ ResponseBundle sendCommand(
     return result;
 }
 
-bool expect(bool condition, const QString& message)
+bool expect(bool _condition, const QString& _message)
 {
-    if (!condition) {
-        std::cerr << "[FAIL] " << message.toStdString() << std::endl;
+    if (!_condition) {
+        std::cerr << "[FAIL] " << _message.toStdString() << std::endl;
         return false;
     }
-    std::cout << "[ OK ] " << message.toStdString() << std::endl;
+    std::cout << "[ OK ] " << _message.toStdString() << std::endl;
     return true;
 }
 
-QString pickDrive(const QList<remoteqt::Packet>& packets)
+QString pickDrive(const QList<remote_control::Packet>& _packets)
 {
-    if (packets.isEmpty()) {
+    if (_packets.isEmpty()) {
         return {};
     }
-    const QStringList drives = remoteqt::decodeLocal8Bit(packets.first().payload).split(',', Qt::SkipEmptyParts);
+    const QStringList drives = remote_control::decodeUtf8(_packets.first().payload).split(',', Qt::SkipEmptyParts);
     if (drives.isEmpty()) {
         return {};
     }
@@ -105,17 +105,17 @@ QString pickDrive(const QList<remoteqt::Packet>& packets)
     return drive + '\\';
 }
 
-bool validateDirectoryResponse(const QList<remoteqt::Packet>& packets)
+bool validateDirectoryResponse(const QList<remote_control::Packet>& _packets)
 {
-    if (packets.isEmpty()) {
+    if (_packets.isEmpty()) {
         return false;
     }
     bool sawEnd = false;
-    for (const remoteqt::Packet& packet : packets) {
-        if (packet.command != remoteqt::Command::ListDirectory) {
+    for (const remote_control::Packet& packet : _packets) {
+        if (packet.command != remote_control::Command::ListDirectory) {
             return false;
         }
-        const remoteqt::FileEntry entry = remoteqt::FileEntry::fromPayload(packet.payload);
+        const remote_control::FileEntry entry = remote_control::FileEntry::fromPayload(packet.payload);
         if (!entry.hasNext) {
             sawEnd = true;
         }
@@ -124,12 +124,12 @@ bool validateDirectoryResponse(const QList<remoteqt::Packet>& packets)
 }
 
 bool validateDownload(
-    const QString& host,
-    quint16 port,
-    const QString& remotePath,
-    const QByteArray& expectedContent)
+    const QString& _host,
+    quint16 _port,
+    const QString& _remotePath,
+    const QByteArray& _expectedContent)
 {
-    const ResponseBundle response = sendCommand(host, port, remoteqt::Command::DownloadFile, remoteqt::encodeLocal8Bit(remotePath));
+    const ResponseBundle response = sendCommand(_host, _port, remote_control::Command::DownloadFile, remote_control::encodeUtf8(_remotePath));
     if (!expect(response.error.isEmpty(), QStringLiteral("download request should succeed"))) {
         return false;
     }
@@ -146,7 +146,7 @@ bool validateDownload(
         stream.setByteOrder(QDataStream::LittleEndian);
         stream >> expectedSize;
     }
-    if (!expect(expectedSize == expectedContent.size(), QStringLiteral("download length should match source file"))) {
+    if (!expect(expectedSize == _expectedContent.size(), QStringLiteral("download length should match source file"))) {
         return false;
     }
 
@@ -154,15 +154,15 @@ bool validateDownload(
     for (int index = 1; index < response.packets.size(); ++index) {
         downloaded.append(response.packets[index].payload);
     }
-    return expect(downloaded == expectedContent, QStringLiteral("downloaded content should match source file"));
+    return expect(downloaded == _expectedContent, QStringLiteral("downloaded content should match source file"));
 }
 
 bool validateDownloadFailure(
-    const QString& host,
-    quint16 port,
-    const QString& remotePath)
+    const QString& _host,
+    quint16 _port,
+    const QString& _remotePath)
 {
-    const ResponseBundle response = sendCommand(host, port, remoteqt::Command::DownloadFile, remoteqt::encodeLocal8Bit(remotePath));
+    const ResponseBundle response = sendCommand(_host, _port, remote_control::Command::DownloadFile, remote_control::encodeUtf8(_remotePath));
     if (!expect(response.error.isEmpty(), QStringLiteral("download failure request should still return a response"))) {
         return false;
     }
@@ -177,17 +177,17 @@ bool validateDownloadFailure(
     return expect(encodedSize < 0, QStringLiteral("failed download should return a negative length marker"));
 }
 
-bool directoryContainsNames(const QList<remoteqt::Packet>& packets, const QStringList& names)
+bool directoryContainsNames(const QList<remote_control::Packet>& _packets, const QStringList& _names)
 {
     QStringList actualNames;
-    for (const remoteqt::Packet& packet : packets) {
-        const remoteqt::FileEntry entry = remoteqt::FileEntry::fromPayload(packet.payload);
+    for (const remote_control::Packet& packet : _packets) {
+        const remote_control::FileEntry entry = remote_control::FileEntry::fromPayload(packet.payload);
         if (entry.hasNext && !entry.isInvalid) {
             actualNames << entry.fileName;
         }
     }
 
-    for (const QString& name : names) {
+    for (const QString& name : _names) {
         if (!actualNames.contains(name)) {
             return false;
         }
@@ -196,23 +196,23 @@ bool directoryContainsNames(const QList<remoteqt::Packet>& packets, const QStrin
 }
 
 bool validateStatusReply(
-    const ResponseBundle& response,
-    remoteqt::Command command,
-    bool expectedSuccess,
-    const QString& label)
+    const ResponseBundle& _response,
+    remote_control::Command _command,
+    bool _expectedSuccess,
+    const QString& _label)
 {
-    if (!expect(response.error.isEmpty(), label + QStringLiteral(": network request should succeed"))) {
+    if (!expect(_response.error.isEmpty(), _label + QStringLiteral(": network request should succeed"))) {
         return false;
     }
-    if (!expect(response.packets.size() == 1, label + QStringLiteral(": should return one packet"))) {
+    if (!expect(_response.packets.size() == 1, _label + QStringLiteral(": should return one packet"))) {
         return false;
     }
-    if (!expect(!response.packets.isEmpty() && response.packets.first().command == command, label + QStringLiteral(": should echo the command"))) {
+    if (!expect(!_response.packets.isEmpty() && _response.packets.first().command == _command, _label + QStringLiteral(": should echo the command"))) {
         return false;
     }
     QString message;
-    const bool success = remoteqt::parseStatusPayload(response.packets.first().payload, true, &message);
-    return expect(success == expectedSuccess, label + QStringLiteral(": status payload should match expected result"));
+    const bool success = remote_control::parseStatusPayload(_response.packets.first().payload, true, &message);
+    return expect(success == _expectedSuccess, _label + QStringLiteral(": status payload should match expected result"));
 }
 
 }
@@ -226,29 +226,29 @@ int main(int argc, char* argv[])
 
     bool allPassed = true;
 
-    const ResponseBundle testResponse = sendCommand(host, port, remoteqt::Command::TestConnection);
+    const ResponseBundle testResponse = sendCommand(host, port, remote_control::Command::TestConnection);
     allPassed &= expect(testResponse.error.isEmpty(), QStringLiteral("test connection request should succeed"));
     allPassed &= expect(testResponse.packets.size() == 1, QStringLiteral("test connection should return one packet"));
-    allPassed &= expect(!testResponse.packets.isEmpty() && testResponse.packets.first().command == remoteqt::Command::TestConnection,
+    allPassed &= expect(!testResponse.packets.isEmpty() && testResponse.packets.first().command == remote_control::Command::TestConnection,
         QStringLiteral("test connection should echo command 1981"));
 
-    const ResponseBundle drivesResponse = sendCommand(host, port, remoteqt::Command::ListDrives);
+    const ResponseBundle drivesResponse = sendCommand(host, port, remote_control::Command::ListDrives);
     allPassed &= expect(drivesResponse.error.isEmpty(), QStringLiteral("list drives request should succeed"));
     const QString driveRoot = pickDrive(drivesResponse.packets);
     allPassed &= expect(!driveRoot.isEmpty(), QStringLiteral("server should report at least one drive"));
 
     if (!driveRoot.isEmpty()) {
-        const ResponseBundle directoryResponse = sendCommand(host, port, remoteqt::Command::ListDirectory, remoteqt::encodeLocal8Bit(driveRoot));
+        const ResponseBundle directoryResponse = sendCommand(host, port, remote_control::Command::ListDirectory, remote_control::encodeUtf8(driveRoot));
         allPassed &= expect(directoryResponse.error.isEmpty(), QStringLiteral("list directory request should succeed"));
         allPassed &= expect(validateDirectoryResponse(directoryResponse.packets), QStringLiteral("directory listing should include a terminating packet"));
     }
 
-    const QString invalidDirectory = QStringLiteral("Z:\\__remoteqt_missing_dir__");
-    const ResponseBundle invalidDirectoryResponse = sendCommand(host, port, remoteqt::Command::ListDirectory, remoteqt::encodeLocal8Bit(invalidDirectory));
+    const QString invalidDirectory = QStringLiteral("Z:\\__remote_control_missing_dir__");
+    const ResponseBundle invalidDirectoryResponse = sendCommand(host, port, remote_control::Command::ListDirectory, remote_control::encodeUtf8(invalidDirectory));
     allPassed &= expect(invalidDirectoryResponse.error.isEmpty(), QStringLiteral("invalid directory request should still respond"));
     allPassed &= expect(invalidDirectoryResponse.packets.size() == 1, QStringLiteral("invalid directory should return one marker packet"));
     if (!invalidDirectoryResponse.packets.isEmpty()) {
-        const remoteqt::FileEntry invalidEntry = remoteqt::FileEntry::fromPayload(invalidDirectoryResponse.packets.first().payload);
+        const remote_control::FileEntry invalidEntry = remote_control::FileEntry::fromPayload(invalidDirectoryResponse.packets.first().payload);
         allPassed &= expect(invalidEntry.isInvalid, QStringLiteral("invalid directory should be marked invalid"));
         allPassed &= expect(!invalidEntry.hasNext, QStringLiteral("invalid directory marker should terminate the listing"));
     }
@@ -283,7 +283,7 @@ int main(int argc, char* argv[])
         unicodeFile.open(QIODevice::WriteOnly);
         unicodeFile.write("unicode content");
     }
-    const ResponseBundle tempDirResponse = sendCommand(host, port, remoteqt::Command::ListDirectory, remoteqt::encodeLocal8Bit(tempDir.path()));
+    const ResponseBundle tempDirResponse = sendCommand(host, port, remote_control::Command::ListDirectory, remote_control::encodeUtf8(tempDir.path()));
     allPassed &= expect(tempDirResponse.error.isEmpty(), QStringLiteral("listing temp directory with unicode entries should succeed"));
     allPassed &= expect(validateDirectoryResponse(tempDirResponse.packets), QStringLiteral("temp directory listing should include a terminating packet"));
     allPassed &= expect(directoryContainsNames(tempDirResponse.packets, { unicodeDirName, unicodeFileName, QFileInfo(downloadSourcePath).fileName() }),
@@ -304,8 +304,8 @@ int main(int argc, char* argv[])
         file.open(QIODevice::WriteOnly);
         file.write("delete me");
     }
-    const ResponseBundle deleteResponse = sendCommand(host, port, remoteqt::Command::DeleteFile, remoteqt::encodeLocal8Bit(deleteTargetPath));
-    allPassed &= validateStatusReply(deleteResponse, remoteqt::Command::DeleteFile, true, QStringLiteral("delete file request"));
+    const ResponseBundle deleteResponse = sendCommand(host, port, remote_control::Command::DeleteFile, remote_control::encodeUtf8(deleteTargetPath));
+    allPassed &= validateStatusReply(deleteResponse, remote_control::Command::DeleteFile, true, QStringLiteral("delete file request"));
     allPassed &= expect(QFileInfo::exists(deleteTargetPath) == false, QStringLiteral("delete file should remove the target"));
 
     const QString deleteDirPath = tempDir.filePath(QStringLiteral("delete-dir-%1").arg(uniqueSuffix));
@@ -315,14 +315,14 @@ int main(int argc, char* argv[])
         nested.open(QIODevice::WriteOnly);
         nested.write("nested");
     }
-    const ResponseBundle deleteDirResponse = sendCommand(host, port, remoteqt::Command::DeleteFile, remoteqt::encodeLocal8Bit(deleteDirPath));
-    allPassed &= validateStatusReply(deleteDirResponse, remoteqt::Command::DeleteFile, true, QStringLiteral("delete directory request"));
+    const ResponseBundle deleteDirResponse = sendCommand(host, port, remote_control::Command::DeleteFile, remote_control::encodeUtf8(deleteDirPath));
+    allPassed &= validateStatusReply(deleteDirResponse, remote_control::Command::DeleteFile, true, QStringLiteral("delete directory request"));
     allPassed &= expect(QFileInfo::exists(deleteDirPath) == false, QStringLiteral("delete directory should remove recursively"));
 
-    const ResponseBundle deleteMissingResponse = sendCommand(host, port, remoteqt::Command::DeleteFile, remoteqt::encodeLocal8Bit(deleteDirPath));
-    allPassed &= validateStatusReply(deleteMissingResponse, remoteqt::Command::DeleteFile, false, QStringLiteral("delete missing target request"));
+    const ResponseBundle deleteMissingResponse = sendCommand(host, port, remote_control::Command::DeleteFile, remote_control::encodeUtf8(deleteDirPath));
+    allPassed &= validateStatusReply(deleteMissingResponse, remote_control::Command::DeleteFile, false, QStringLiteral("delete missing target request"));
 
-    const ResponseBundle watchResponse = sendCommand(host, port, remoteqt::Command::WatchScreen);
+    const ResponseBundle watchResponse = sendCommand(host, port, remote_control::Command::WatchScreen);
     allPassed &= expect(watchResponse.error.isEmpty(), QStringLiteral("watch screen request should succeed"));
     allPassed &= expect(watchResponse.packets.size() == 1, QStringLiteral("watch screen should return one image packet"));
     if (!watchResponse.packets.isEmpty()) {
@@ -334,21 +334,21 @@ int main(int argc, char* argv[])
 
     POINT cursorPos {};
     GetCursorPos(&cursorPos);
-    remoteqt::MouseEventPacket mouseEvent;
-    mouseEvent.action = static_cast<quint16>(remoteqt::MouseAction::Click);
-    mouseEvent.button = static_cast<quint16>(remoteqt::MouseButton::None);
+    remote_control::MouseEventPacket mouseEvent;
+    mouseEvent.action = static_cast<quint16>(remote_control::MouseAction::Click);
+    mouseEvent.button = static_cast<quint16>(remote_control::MouseButton::None);
     mouseEvent.x = cursorPos.x;
     mouseEvent.y = cursorPos.y;
     const QByteArray mousePayload(reinterpret_cast<const char*>(&mouseEvent), static_cast<int>(sizeof(mouseEvent)));
-    const ResponseBundle mouseResponse = sendCommand(host, port, remoteqt::Command::MouseEvent, mousePayload);
-    allPassed &= validateStatusReply(mouseResponse, remoteqt::Command::MouseEvent, true, QStringLiteral("mouse event request"));
+    const ResponseBundle mouseResponse = sendCommand(host, port, remote_control::Command::MouseEvent, mousePayload);
+    allPassed &= validateStatusReply(mouseResponse, remote_control::Command::MouseEvent, true, QStringLiteral("mouse event request"));
 
     const QString executablePath = QStringLiteral("C:/Windows/System32/whoami.exe");
-    const ResponseBundle runResponse = sendCommand(host, port, remoteqt::Command::RunFile, remoteqt::encodeLocal8Bit(executablePath));
-    allPassed &= validateStatusReply(runResponse, remoteqt::Command::RunFile, true, QStringLiteral("run file request"));
+    const ResponseBundle runResponse = sendCommand(host, port, remote_control::Command::RunFile, remote_control::encodeUtf8(executablePath));
+    allPassed &= validateStatusReply(runResponse, remote_control::Command::RunFile, true, QStringLiteral("run file request"));
 
-    const ResponseBundle runMissingResponse = sendCommand(host, port, remoteqt::Command::RunFile, remoteqt::encodeLocal8Bit(QStringLiteral("C:/__remoteqt_missing__.exe")));
-    allPassed &= validateStatusReply(runMissingResponse, remoteqt::Command::RunFile, false, QStringLiteral("run missing file request"));
+    const ResponseBundle runMissingResponse = sendCommand(host, port, remote_control::Command::RunFile, remote_control::encodeUtf8(QStringLiteral("C:/__remote_control_missing__.exe")));
+    allPassed &= validateStatusReply(runMissingResponse, remote_control::Command::RunFile, false, QStringLiteral("run missing file request"));
 
     std::cout << (allPassed ? "SMOKE TEST PASSED" : "SMOKE TEST FAILED") << std::endl;
     return allPassed ? 0 : 1;

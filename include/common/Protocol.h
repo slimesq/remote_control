@@ -6,7 +6,7 @@
 #include <QString>
 #include <QtGlobal>
 
-namespace remoteqt {
+namespace remote_control {
 
 enum class Command : quint16 {
     ListDrives = 1,
@@ -42,13 +42,6 @@ struct MouseEventPacket {
     qint32 x = 0;
     qint32 y = 0;
 };
-
-struct LegacyFileInfo {
-    qint32 isInvalid = 0;
-    qint32 isDirectory = 0;
-    qint32 hasNext = 1;
-    char fileName[256] = {};
-};
 #pragma pack(pop)
 
 struct FileEntry {
@@ -58,17 +51,17 @@ struct FileEntry {
     QString fileName;
 
     QByteArray toPayload() const;
-    static FileEntry fromPayload(const QByteArray& payload);
+    static FileEntry fromPayload(const QByteArray& _payload);
 };
 
-QByteArray makeStatusPayload(bool success, const QString& message = {});
-bool parseStatusPayload(const QByteArray& payload, bool defaultSuccess, QString* messageOut = nullptr);
+QByteArray makeStatusPayload(bool _success, const QString& _message = {});
+bool parseStatusPayload(const QByteArray& _payload, bool _defaultSuccess, QString* _messageOut = nullptr);
 
-QString decodeLocal8Bit(const QByteArray& data);
-QByteArray encodeLocal8Bit(const QString& text);
+QString decodeUtf8(const QByteArray& _data);
+QByteArray encodeUtf8(const QString& _text);
 
 }
 
-Q_DECLARE_METATYPE(remoteqt::Command)
-Q_DECLARE_METATYPE(remoteqt::FileEntry)
-Q_DECLARE_METATYPE(QList<remoteqt::FileEntry>)
+Q_DECLARE_METATYPE(remote_control::Command)
+Q_DECLARE_METATYPE(remote_control::FileEntry)
+Q_DECLARE_METATYPE(QList<remote_control::FileEntry>)

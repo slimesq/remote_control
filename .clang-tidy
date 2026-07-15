@@ -1,0 +1,19 @@
+Checks: >
+  -*,
+  readability-identifier-naming
+
+CheckOptions:
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.FunctionCase: camelBack
+  readability-identifier-naming.MethodCase: camelBack
+  readability-identifier-naming.ParameterCase: camelBack
+  readability-identifier-naming.ParameterPrefix: _
+  readability-identifier-naming.LocalVariableCase: camelBack
+  readability-identifier-naming.PrivateMemberCase: camelBack
+  readability-identifier-naming.PrivateMemberPrefix: m_
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*remote_control[\\/](include|src)[\\/]'

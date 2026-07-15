@@ -1,21 +1,21 @@
-file(GLOB_RECURSE REMOTE_CLIENT_SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE REMOTE_CONTROL_CLIENT_SOURCES CONFIGURE_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/client/*.cpp
     ${PROJECT_SOURCE_DIR}/src/client/*.ui
     ${PROJECT_SOURCE_DIR}/include/client/*.h
 )
 
-qt_add_executable(remote_client_qt
-    ${REMOTE_CLIENT_SOURCES}
+add_executable(RemoteControlClient
+    ${REMOTE_CONTROL_CLIENT_SOURCES}
 )
 
-target_include_directories(remote_client_qt PRIVATE
+target_include_directories(RemoteControlClient PRIVATE
     ${PROJECT_SOURCE_DIR}/include/client
 )
 
-target_link_libraries(remote_client_qt PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Network
-    remote_common
+target_link_libraries(RemoteControlClient PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Network
+    RemoteControlCommon
 )

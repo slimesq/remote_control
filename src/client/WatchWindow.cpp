@@ -13,23 +13,32 @@ namespace {
 
 constexpr int MoveEventIntervalMs = 16;
 
+QPoint mouseEventPosition(const QMouseEvent* _event)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    return _event->position().toPoint();
+#else
+    return _event->pos();
+#endif
 }
 
-RemoteScreenWidget::RemoteScreenWidget(QWidget* parent)
-    : QWidget(parent)
+}
+
+RemoteScreenWidget::RemoteScreenWidget(QWidget* _parent)
+    : QWidget(_parent)
 {
     setMouseTracking(true);
     setMinimumSize(800, 500);
     // Merge rapid mouse-move bursts into a small fixed-rate stream.
-    m_moveEventTimer = new QTimer(this);
-    m_moveEventTimer->setSingleShot(true);
-    m_moveEventTimer->setInterval(MoveEventIntervalMs);
-    connect(m_moveEventTimer, &QTimer::timeout, this, &RemoteScreenWidget::flushPendingMoveEvent);
+    this->m_moveEventTimer = new QTimer(this);
+    this->m_moveEventTimer->setSingleShot(true);
+    this->m_moveEventTimer->setInterval(MoveEventIntervalMs);
+    connect(this->m_moveEventTimer, &QTimer::timeout, this, &RemoteScreenWidget::flushPendingMoveEvent);
 }
 
-void RemoteScreenWidget::setImage(const QImage& image)
+void RemoteScreenWidget::setImage(const QImage& _image)
 {
-    m_image = image;
+    this->m_image = _image;
     update();
 }
 
@@ -37,118 +46,118 @@ void RemoteScreenWidget::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
-    if (!m_image.isNull()) {
-        painter.drawImage(rect(), m_image);
+    if (!this->m_image.isNull()) {
+        painter.drawImage(rect(), this->m_image);
     }
 }
 
-void RemoteScreenWidget::mouseDoubleClickEvent(QMouseEvent* event)
+void RemoteScreenWidget::mouseDoubleClickEvent(QMouseEvent* _event)
 {
-    emit mouseEventCreated(makeMouseEvent(remoteqt::MouseAction::DoubleClick, toProtocolButton(event->button()), event->position().toPoint()));
-    QWidget::mouseDoubleClickEvent(event);
+    emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::DoubleClick, this->toProtocolButton(_event->button()), mouseEventPosition(_event)));
+    QWidget::mouseDoubleClickEvent(_event);
 }
 
-void RemoteScreenWidget::mousePressEvent(QMouseEvent* event)
+void RemoteScreenWidget::mousePressEvent(QMouseEvent* _event)
 {
-    emit mouseEventCreated(makeMouseEvent(remoteqt::MouseAction::Press, toProtocolButton(event->button()), event->position().toPoint()));
-    QWidget::mousePressEvent(event);
+    emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::Press, this->toProtocolButton(_event->button()), mouseEventPosition(_event)));
+    QWidget::mousePressEvent(_event);
 }
 
-void RemoteScreenWidget::mouseReleaseEvent(QMouseEvent* event)
+void RemoteScreenWidget::mouseReleaseEvent(QMouseEvent* _event)
 {
-    emit mouseEventCreated(makeMouseEvent(remoteqt::MouseAction::Release, toProtocolButton(event->button()), event->position().toPoint()));
-    QWidget::mouseReleaseEvent(event);
+    emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::Release, this->toProtocolButton(_event->button()), mouseEventPosition(_event)));
+    QWidget::mouseReleaseEvent(_event);
 }
 
-void RemoteScreenWidget::mouseMoveEvent(QMouseEvent* event)
+void RemoteScreenWidget::mouseMoveEvent(QMouseEvent* _event)
 {
     // Keep only the latest cursor position; press/release/double-click still go out immediately.
-    m_pendingMoveEvent = makeMouseEvent(remoteqt::MouseAction::Click, remoteqt::MouseButton::None, event->position().toPoint());
-    m_hasPendingMoveEvent = true;
-    if (!m_moveEventTimer->isActive()) {
-        m_moveEventTimer->start();
+    this->m_pendingMoveEvent = this->makeMouseEvent(remote_control::MouseAction::Click, remote_control::MouseButton::None, mouseEventPosition(_event));
+    this->m_hasPendingMoveEvent = true;
+    if (!this->m_moveEventTimer->isActive()) {
+        this->m_moveEventTimer->start();
     }
-    QWidget::mouseMoveEvent(event);
+    QWidget::mouseMoveEvent(_event);
 }
 
 void RemoteScreenWidget::flushPendingMoveEvent()
 {
-    if (!m_hasPendingMoveEvent) {
+    if (!this->m_hasPendingMoveEvent) {
         return;
     }
-    m_hasPendingMoveEvent = false;
-    emit mouseEventCreated(m_pendingMoveEvent);
+    this->m_hasPendingMoveEvent = false;
+    emit mouseEventCreated(this->m_pendingMoveEvent);
 }
 
-remoteqt::MouseEventPacket RemoteScreenWidget::makeMouseEvent(remoteqt::MouseAction action, remoteqt::MouseButton button, const QPoint& point) const
+remote_control::MouseEventPacket RemoteScreenWidget::makeMouseEvent(remote_control::MouseAction _action, remote_control::MouseButton _button, const QPoint& _point) const
 {
-    const QPoint remotePoint = mapToRemote(point);
-    remoteqt::MouseEventPacket event;
-    event.action = static_cast<quint16>(action);
-    event.button = static_cast<quint16>(button);
+    const QPoint remotePoint = this->mapToRemote(_point);
+    remote_control::MouseEventPacket event;
+    event.action = static_cast<quint16>(_action);
+    event.button = static_cast<quint16>(_button);
     event.x = remotePoint.x();
     event.y = remotePoint.y();
     return event;
 }
 
-QPoint RemoteScreenWidget::mapToRemote(const QPoint& point) const
+QPoint RemoteScreenWidget::mapToRemote(const QPoint& _point) const
 {
-    if (m_image.isNull() || width() <= 0 || height() <= 0) {
+    if (this->m_image.isNull() || width() <= 0 || height() <= 0) {
         return {};
     }
-    const int remoteX = point.x() * m_image.width() / qMax(1, width());
-    const int remoteY = point.y() * m_image.height() / qMax(1, height());
+    const int remoteX = _point.x() * this->m_image.width() / qMax(1, width());
+    const int remoteY = _point.y() * this->m_image.height() / qMax(1, height());
     return { remoteX, remoteY };
 }
 
-remoteqt::MouseButton RemoteScreenWidget::toProtocolButton(Qt::MouseButton button)
+remote_control::MouseButton RemoteScreenWidget::toProtocolButton(Qt::MouseButton _button)
 {
-    switch (button) {
+    switch (_button) {
     case Qt::LeftButton:
-        return remoteqt::MouseButton::Left;
+        return remote_control::MouseButton::Left;
     case Qt::RightButton:
-        return remoteqt::MouseButton::Right;
+        return remote_control::MouseButton::Right;
     case Qt::MiddleButton:
-        return remoteqt::MouseButton::Middle;
+        return remote_control::MouseButton::Middle;
     default:
-        return remoteqt::MouseButton::None;
+        return remote_control::MouseButton::None;
     }
 }
 
-WatchWindow::WatchWindow(RemoteClient* client, QWidget* parent)
-    : QDialog(parent)
-    , m_client(client)
+WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
+    : QDialog(_parent)
+    , m_client(_client)
     , m_ui(std::make_unique<Ui::WatchWindow>())
 {
-    m_ui->setupUi(this);
+    this->m_ui->setupUi(this);
 
-    auto* screenLayout = new QVBoxLayout(m_ui->screenContainer);
+    auto* screenLayout = new QVBoxLayout(this->m_ui->screenContainer);
     screenLayout->setContentsMargins(0, 0, 0, 0);
-    m_screenWidget = new RemoteScreenWidget(m_ui->screenContainer);
-    screenLayout->addWidget(m_screenWidget);
+    this->m_screenWidget = new RemoteScreenWidget(this->m_ui->screenContainer);
+    screenLayout->addWidget(this->m_screenWidget);
 
-    m_timer = new QTimer(this);
-    m_timer->setInterval(200);
+    this->m_timer = new QTimer(this);
+    this->m_timer->setInterval(200);
 
-    connect(m_timer, &QTimer::timeout, m_client, &RemoteClient::requestWatchFrame);
-    connect(m_screenWidget, &RemoteScreenWidget::mouseEventCreated, m_client, &RemoteClient::sendMouseEvent);
-    connect(m_ui->lockButton, &QPushButton::clicked, m_client, &RemoteClient::lockRemote);
-    connect(m_ui->unlockButton, &QPushButton::clicked, m_client, &RemoteClient::unlockRemote);
-    connect(m_client, &RemoteClient::watchFrameReady, m_screenWidget, &RemoteScreenWidget::setImage);
+    connect(this->m_timer, &QTimer::timeout, this->m_client, &RemoteClient::requestWatchFrame);
+    connect(this->m_screenWidget, &RemoteScreenWidget::mouseEventCreated, this->m_client, &RemoteClient::sendMouseEvent);
+    connect(this->m_ui->lockButton, &QPushButton::clicked, this->m_client, &RemoteClient::lockRemote);
+    connect(this->m_ui->unlockButton, &QPushButton::clicked, this->m_client, &RemoteClient::unlockRemote);
+    connect(this->m_client, &RemoteClient::watchFrameReady, this->m_screenWidget, &RemoteScreenWidget::setImage);
 }
 
 WatchWindow::~WatchWindow() = default;
 
-void WatchWindow::showEvent(QShowEvent* event)
+void WatchWindow::showEvent(QShowEvent* _event)
 {
-    m_timer->start();
+    this->m_timer->start();
     // Kick off the first frame immediately so the dialog does not open empty.
-    m_client->requestWatchFrame();
-    QDialog::showEvent(event);
+    this->m_client->requestWatchFrame();
+    QDialog::showEvent(_event);
 }
 
-void WatchWindow::closeEvent(QCloseEvent* event)
+void WatchWindow::closeEvent(QCloseEvent* _event)
 {
-    m_timer->stop();
-    QDialog::closeEvent(event);
+    this->m_timer->stop();
+    QDialog::closeEvent(_event);
 }

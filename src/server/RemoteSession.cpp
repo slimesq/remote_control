@@ -12,38 +12,38 @@ constexpr int MaxIncomingBufferBytes = 1024 * 1024;
 
 }
 
-RemoteSession::RemoteSession(QTcpSocket* socket, CommandService* commandService, QObject* parent)
-    : QObject(parent)
-    , m_socket(socket)
-    , m_commandService(commandService)
+RemoteSession::RemoteSession(QTcpSocket* _socket, CommandService* _commandService, QObject* _parent)
+    : QObject(_parent)
+    , m_socket(_socket)
+    , m_commandService(_commandService)
     , m_idleTimer(new QTimer(this))
 {
-    m_socket->setParent(this);
-    m_socket->setReadBufferSize(MaxIncomingBufferBytes);
-    connect(m_socket, &QTcpSocket::readyRead, this, &RemoteSession::onReadyRead);
-    connect(m_socket, &QTcpSocket::disconnected, this, &RemoteSession::onDisconnected);
-    m_idleTimer->setSingleShot(true);
-    m_idleTimer->setInterval(IdleTimeoutMs);
-    connect(m_idleTimer, &QTimer::timeout, this, &RemoteSession::onIdleTimeout);
-    restartIdleTimer();
+    this->m_socket->setParent(this);
+    this->m_socket->setReadBufferSize(MaxIncomingBufferBytes);
+    connect(this->m_socket, &QTcpSocket::readyRead, this, &RemoteSession::onReadyRead);
+    connect(this->m_socket, &QTcpSocket::disconnected, this, &RemoteSession::onDisconnected);
+    this->m_idleTimer->setSingleShot(true);
+    this->m_idleTimer->setInterval(IdleTimeoutMs);
+    connect(this->m_idleTimer, &QTimer::timeout, this, &RemoteSession::onIdleTimeout);
+    this->restartIdleTimer();
 }
 
 void RemoteSession::onReadyRead()
 {
-    restartIdleTimer();
-    m_buffer.append(m_socket->readAll());
-    if (m_buffer.size() > MaxIncomingBufferBytes) {
-        m_socket->abort();
+    this->restartIdleTimer();
+    this->m_buffer.append(this->m_socket->readAll());
+    if (this->m_buffer.size() > MaxIncomingBufferBytes) {
+        this->m_socket->abort();
         return;
     }
     while (true) {
         // Each TCP session handles at most one fully parsed request packet.
-        const auto packet = remoteqt::Packet::tryParse(m_buffer);
+        const auto packet = remote_control::Packet::tryParse(this->m_buffer);
         if (!packet.has_value()) {
             break;
         }
-        processPacket(packet.value());
-        if (m_handled) {
+        this->processPacket(packet.value());
+        if (this->m_handled) {
             break;
         }
     }
@@ -56,29 +56,29 @@ void RemoteSession::onDisconnected()
 
 void RemoteSession::onIdleTimeout()
 {
-    if (m_handled) {
+    if (this->m_handled) {
         return;
     }
-    m_socket->abort();
+    this->m_socket->abort();
 }
 
-void RemoteSession::processPacket(const remoteqt::Packet& packet)
+void RemoteSession::processPacket(const remote_control::Packet& _packet)
 {
-    if (m_handled) {
+    if (this->m_handled) {
         return;
     }
-    m_handled = true;
+    this->m_handled = true;
     // Commands are synchronous here: collect all response packets, write them, then close the socket.
-    const QList<remoteqt::Packet> responses = m_commandService->handle(packet);
-    for (const remoteqt::Packet& response : responses) {
-        m_socket->write(response.serialize());
+    const QList<remote_control::Packet> responses = this->m_commandService->handle(_packet);
+    for (const remote_control::Packet& response : responses) {
+        this->m_socket->write(response.serialize());
     }
-    m_socket->disconnectFromHost();
+    this->m_socket->disconnectFromHost();
 }
 
 void RemoteSession::restartIdleTimer()
 {
-    if (!m_handled) {
-        m_idleTimer->start();
+    if (!this->m_handled) {
+        this->m_idleTimer->start();
     }
 }

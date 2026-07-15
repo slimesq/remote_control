@@ -12,15 +12,15 @@ class ServerTrayController : public QObject
     Q_OBJECT
 
 public:
-    explicit ServerTrayController(RemoteServer* server, QObject* parent = nullptr);
+    explicit ServerTrayController(RemoteServer* _server, QObject* _parent = nullptr);
 
     void show();
-    void runTimedLockTest(int seconds);
+    void runTimedLockTest(int _seconds);
 
 private:
     void refreshActionState();
-    void showInfo(const QString& title, const QString& message);
-    void showError(const QString& title, const QString& message);
+    void showInfo(const QString& _title, const QString& _message);
+    void showError(const QString& _title, const QString& _message);
 
     RemoteServer* m_server = nullptr;
     QSystemTrayIcon* m_trayIcon = nullptr;

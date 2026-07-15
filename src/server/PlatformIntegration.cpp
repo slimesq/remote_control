@@ -9,9 +9,9 @@
 
 namespace {
 
-QString quoteArgument(const QString& value)
+QString quoteArgument(const QString& _value)
 {
-    QString escaped = value;
+    QString escaped = _value;
     escaped.replace('"', QStringLiteral("\\\""));
     return QStringLiteral("\"%1\"").arg(escaped);
 }
@@ -36,12 +36,12 @@ bool PlatformIntegration::isRunningAsAdmin()
     return isAdmin == TRUE;
 }
 
-bool PlatformIntegration::relaunchElevated(const QStringList& arguments, QString* errorMessage)
+bool PlatformIntegration::relaunchElevated(const QStringList& _arguments, QString* _errorMessage)
 {
     const QString program = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
 
     QStringList quotedArguments;
-    for (const QString& argument : arguments) {
+    for (const QString& argument : _arguments) {
         quotedArguments << quoteArgument(argument);
     }
     const QString nativeArgs = quotedArguments.join(' ');
@@ -55,36 +55,36 @@ bool PlatformIntegration::relaunchElevated(const QStringList& arguments, QString
         SW_SHOWNORMAL);
 
     if (reinterpret_cast<INT_PTR>(result) <= 32) {
-        if (errorMessage) {
-            *errorMessage = QObject::tr("Failed to relaunch with administrator privileges.");
+        if (_errorMessage) {
+            *_errorMessage = QObject::tr("Failed to relaunch with administrator privileges.");
         }
         return false;
     }
     return true;
 }
 
-bool PlatformIntegration::installStartupEntry(QString* errorMessage)
+bool PlatformIntegration::installStartupEntry(QString* _errorMessage)
 {
     QSettings settings(startupRegistryPath(), QSettings::NativeFormat);
     settings.setValue(startupValueName(), startupCommand());
     settings.sync();
     if (settings.status() != QSettings::NoError) {
-        if (errorMessage) {
-            *errorMessage = QObject::tr("Failed to create the startup entry.");
+        if (_errorMessage) {
+            *_errorMessage = QObject::tr("Failed to create the startup entry.");
         }
         return false;
     }
     return true;
 }
 
-bool PlatformIntegration::removeStartupEntry(QString* errorMessage)
+bool PlatformIntegration::removeStartupEntry(QString* _errorMessage)
 {
     QSettings settings(startupRegistryPath(), QSettings::NativeFormat);
     settings.remove(startupValueName());
     settings.sync();
     if (settings.status() != QSettings::NoError) {
-        if (errorMessage) {
-            *errorMessage = QObject::tr("Failed to remove the startup entry.");
+        if (_errorMessage) {
+            *_errorMessage = QObject::tr("Failed to remove the startup entry.");
         }
         return false;
     }
@@ -104,7 +104,7 @@ QString PlatformIntegration::startupRegistryPath()
 
 QString PlatformIntegration::startupValueName()
 {
-    return QStringLiteral("RemoteServerQt");
+    return QStringLiteral("RemoteControlServer");
 }
 
 QString PlatformIntegration::startupCommand()

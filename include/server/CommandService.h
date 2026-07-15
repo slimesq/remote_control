@@ -12,25 +12,25 @@ class CommandService : public QObject
     Q_OBJECT
 
 public:
-    explicit CommandService(QObject* parent = nullptr);
+    explicit CommandService(QObject* _parent = nullptr);
     ~CommandService() override;
 
-    QList<remoteqt::Packet> handle(const remoteqt::Packet& request);
+    QList<remote_control::Packet> handle(const remote_control::Packet& _request);
     void lockLocalMachine();
     void unlockLocalMachine();
     bool isLocked() const;
 
 private:
-    QList<remoteqt::Packet> handleListDrives() const;
-    QList<remoteqt::Packet> handleListDirectory(const QByteArray& payload) const;
-    QList<remoteqt::Packet> handleRunFile(const QByteArray& payload) const;
-    QList<remoteqt::Packet> handleDownloadFile(const QByteArray& payload) const;
-    QList<remoteqt::Packet> handleMouseEvent(const QByteArray& payload) const;
-    QList<remoteqt::Packet> handleWatchScreen() const;
-    QList<remoteqt::Packet> handleLockMachine() const;
-    QList<remoteqt::Packet> handleUnlockMachine() const;
-    QList<remoteqt::Packet> handleDeleteFile(const QByteArray& payload) const;
-    QList<remoteqt::Packet> handleTestConnection() const;
+    QList<remote_control::Packet> handleListDrives() const;
+    QList<remote_control::Packet> handleListDirectory(const QByteArray& _payload) const;
+    QList<remote_control::Packet> handleRunFile(const QByteArray& _payload) const;
+    QList<remote_control::Packet> handleDownloadFile(const QByteArray& _payload) const;
+    QList<remote_control::Packet> handleMouseEvent(const QByteArray& _payload) const;
+    QList<remote_control::Packet> handleWatchScreen() const;
+    QList<remote_control::Packet> handleLockMachine() const;
+    QList<remote_control::Packet> handleUnlockMachine() const;
+    QList<remote_control::Packet> handleDeleteFile(const QByteArray& _payload) const;
+    QList<remote_control::Packet> handleTestConnection() const;
 
     std::unique_ptr<LockWindow> m_lockWindow;
 };

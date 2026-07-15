@@ -20,13 +20,13 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(QWidget* _parent = nullptr);
     ~MainWindow() override;
-    void setEndpoint(const QString& host, quint16 port);
+    void setEndpoint(const QString& _host, quint16 _port);
 
 private:
     QProgressDialog* ensureDownloadProgressDialog();
-    void setBusyState(bool busy, const QString& message = {});
+    void setBusyState(bool _busy, const QString& _message = {});
     void updateActionState();
     void clearRemoteView();
     void showWatchWindow();
@@ -36,12 +36,12 @@ private:
     void downloadSelectedFile();
     void deleteSelectedFile();
     void wireSignals();
-    void requestSelectedDirectory(QTreeWidgetItem* item);
-    void populateDriveTree(const QStringList& drives);
-    void updateDirectoryView(const QString& path, const QList<remoteqt::FileEntry>& entries);
-    QTreeWidgetItem* findItemByPath(const QString& path) const;
-    static QString normalizeDrive(const QString& drive);
-    static QString joinPath(const QString& basePath, const QString& fileName);
+    void requestSelectedDirectory(QTreeWidgetItem* _item);
+    void populateDriveTree(const QStringList& _drives);
+    void updateDirectoryView(const QString& _path, const QList<remote_control::FileEntry>& _entries);
+    QTreeWidgetItem* findItemByPath(const QString& _path) const;
+    static QString normalizeDrive(const QString& _drive);
+    static QString joinPath(const QString& _basePath, const QString& _fileName);
 
     RemoteClient* m_client = nullptr;
     WatchWindow* m_watchWindow = nullptr;

@@ -7,9 +7,9 @@ class PlatformIntegration
 {
 public:
     static bool isRunningAsAdmin();
-    static bool relaunchElevated(const QStringList& arguments, QString* errorMessage = nullptr);
-    static bool installStartupEntry(QString* errorMessage = nullptr);
-    static bool removeStartupEntry(QString* errorMessage = nullptr);
+    static bool relaunchElevated(const QStringList& _arguments, QString* _errorMessage = nullptr);
+    static bool installStartupEntry(QString* _errorMessage = nullptr);
+    static bool removeStartupEntry(QString* _errorMessage = nullptr);
     static bool startupEntryExists();
 
 private:

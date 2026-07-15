@@ -9,11 +9,11 @@
 
 #include <windows.h>
 
-LockWindow::LockWindow(QWidget* parent)
-    : QWidget(parent)
+LockWindow::LockWindow(QWidget* _parent)
+    : QWidget(_parent)
     , m_ui(std::make_unique<Ui::LockWindow>())
 {
-    m_ui->setupUi(this);
+    this->m_ui->setupUi(this);
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setFocusPolicy(Qt::StrongFocus);
 }
@@ -21,19 +21,19 @@ LockWindow::LockWindow(QWidget* parent)
 LockWindow::~LockWindow()
 {
     releaseKeyboard();
-    m_locked = false;
-    updateSystemUi(false);
+    this->m_locked = false;
+    this->updateSystemUi(false);
 }
 
 void LockWindow::lockMachine()
 {
-    if (m_locked) {
+    if (this->m_locked) {
         raise();
         activateWindow();
         return;
     }
-    m_locked = true;
-    updateSystemUi(true);
+    this->m_locked = true;
+    this->updateSystemUi(true);
     showFullScreen();
     raise();
     activateWindow();
@@ -43,64 +43,64 @@ void LockWindow::lockMachine()
 
 void LockWindow::unlockMachine()
 {
-    if (!m_locked) {
+    if (!this->m_locked) {
         return;
     }
-    m_locked = false;
+    this->m_locked = false;
     releaseKeyboard();
-    updateSystemUi(false);
+    this->updateSystemUi(false);
     hide();
 }
 
 bool LockWindow::isLocked() const
 {
-    return m_locked;
+    return this->m_locked;
 }
 
-void LockWindow::closeEvent(QCloseEvent* event)
+void LockWindow::closeEvent(QCloseEvent* _event)
 {
-    if (m_locked) {
-        event->ignore();
+    if (this->m_locked) {
+        _event->ignore();
         return;
     }
-    QWidget::closeEvent(event);
+    QWidget::closeEvent(_event);
 }
 
-void LockWindow::focusOutEvent(QFocusEvent* event)
+void LockWindow::focusOutEvent(QFocusEvent* _event)
 {
-    if (m_locked) {
+    if (this->m_locked) {
         raise();
         activateWindow();
         setFocus(Qt::ActiveWindowFocusReason);
         grabKeyboard();
     }
-    QWidget::focusOutEvent(event);
+    QWidget::focusOutEvent(_event);
 }
 
-void LockWindow::keyPressEvent(QKeyEvent* event)
+void LockWindow::keyPressEvent(QKeyEvent* _event)
 {
-    if (m_locked && event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)) {
-        unlockMachine();
-        event->accept();
+    if (this->m_locked && _event->key() == Qt::Key_C && (_event->modifiers() & Qt::ControlModifier)) {
+        this->unlockMachine();
+        _event->accept();
         return;
     }
 
-    QWidget::keyPressEvent(event);
+    QWidget::keyPressEvent(_event);
 }
 
-void LockWindow::updateSystemUi(bool locked)
+void LockWindow::updateSystemUi(bool _locked)
 {
-    if (locked) {
+    if (_locked) {
         QApplication::setOverrideCursor(Qt::BlankCursor);
     } else {
         QApplication::restoreOverrideCursor();
     }
 
     if (HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr)) {
-        ShowWindow(taskbar, locked ? SW_HIDE : SW_SHOW);
+        ShowWindow(taskbar, _locked ? SW_HIDE : SW_SHOW);
     }
 
-    if (locked) {
+    if (_locked) {
         RECT rect { 0, 0, 1, 1 };
         ClipCursor(&rect);
     } else {

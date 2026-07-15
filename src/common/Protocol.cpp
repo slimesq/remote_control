@@ -1,78 +1,124 @@
 #include "Protocol.h"
 
-#include <QFileInfo>
+#include <QDataStream>
+#include <QIODevice>
 
-#include <cstring>
+namespace remote_control {
 
-namespace remoteqt {
+namespace {
 
-QByteArray FileEntry::toPayload() const
-{
-    LegacyFileInfo info;
-    info.isInvalid = isInvalid ? 1 : 0;
-    info.isDirectory = isDirectory ? 1 : 0;
-    info.hasNext = hasNext ? 1 : 0;
+constexpr quint8 FileEntryPayloadVersion = 1;
+constexpr quint8 InvalidFlag = 1U << 0U;
+constexpr quint8 DirectoryFlag = 1U << 1U;
+constexpr quint8 HasNextFlag = 1U << 2U;
+constexpr quint8 KnownFlags = InvalidFlag | DirectoryFlag | HasNextFlag;
+constexpr int FileEntryHeaderSize = static_cast<int>(sizeof(quint8) + sizeof(quint8) + sizeof(quint32));
 
-    const QByteArray rawName = encodeLocal8Bit(fileName);
-    const int length = qMin(rawName.size(), static_cast<int>(sizeof(info.fileName) - 1));
-    if (length > 0) {
-        std::memcpy(info.fileName, rawName.constData(), static_cast<size_t>(length));
-    }
-    info.fileName[length] = '\0';
-
-    return QByteArray(reinterpret_cast<const char*>(&info), static_cast<int>(sizeof(info)));
-}
-
-FileEntry FileEntry::fromPayload(const QByteArray& payload)
+FileEntry invalidFileEntry()
 {
     FileEntry entry;
-    if (payload.size() < static_cast<int>(sizeof(LegacyFileInfo))) {
-        entry.isInvalid = true;
-        entry.hasNext = false;
-        return entry;
-    }
-
-    LegacyFileInfo info;
-    std::memcpy(&info, payload.constData(), sizeof(info));
-    entry.isInvalid = info.isInvalid != 0;
-    entry.isDirectory = info.isDirectory != 0;
-    entry.hasNext = info.hasNext != 0;
-    entry.fileName = decodeLocal8Bit(QByteArray(info.fileName, qstrnlen(info.fileName, static_cast<int>(sizeof(info.fileName)))));
+    entry.isInvalid = true;
+    entry.hasNext = false;
     return entry;
 }
 
-QByteArray makeStatusPayload(bool success, const QString& message)
+}
+
+QByteArray FileEntry::toPayload() const
 {
+    quint8 flags = 0;
+    if (isInvalid) {
+        flags |= InvalidFlag;
+    }
+    if (isDirectory) {
+        flags |= DirectoryFlag;
+    }
+    if (hasNext) {
+        flags |= HasNextFlag;
+    }
+
+    const QByteArray rawName = encodeUtf8(fileName);
     QByteArray payload;
-    payload.append(success ? '\x01' : '\x00');
-    payload.append(encodeLocal8Bit(message));
+    QDataStream stream { &payload, QIODevice::WriteOnly };
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream << FileEntryPayloadVersion;
+    stream << flags;
+    stream << static_cast<quint32>(rawName.size());
+    if (!rawName.isEmpty()) {
+        stream.writeRawData(rawName.constData(), rawName.size());
+    }
     return payload;
 }
 
-bool parseStatusPayload(const QByteArray& payload, bool defaultSuccess, QString* messageOut)
+FileEntry FileEntry::fromPayload(const QByteArray& _payload)
 {
-    if (payload.isEmpty()) {
-        if (messageOut) {
-            messageOut->clear();
-        }
-        return defaultSuccess;
+    if (_payload.size() < FileEntryHeaderSize) {
+        return invalidFileEntry();
     }
 
-    const bool success = payload.front() != '\0';
-    if (messageOut) {
-        *messageOut = decodeLocal8Bit(payload.mid(1));
+    QDataStream stream { _payload };
+    stream.setByteOrder(QDataStream::LittleEndian);
+    quint8 version = 0;
+    quint8 flags = 0;
+    quint32 nameLength = 0;
+    stream >> version;
+    stream >> flags;
+    stream >> nameLength;
+
+    const int remainingBytes = _payload.size() - FileEntryHeaderSize;
+    if (stream.status() != QDataStream::Ok
+        || version != FileEntryPayloadVersion
+        || (flags & static_cast<quint8>(~KnownFlags)) != 0
+        || nameLength != static_cast<quint32>(remainingBytes)) {
+        return invalidFileEntry();
+    }
+
+    const QByteArray rawName = _payload.mid(FileEntryHeaderSize, remainingBytes);
+    const QString fileName = decodeUtf8(rawName);
+    if (encodeUtf8(fileName) != rawName) {
+        return invalidFileEntry();
+    }
+
+    FileEntry entry;
+    entry.isInvalid = (flags & InvalidFlag) != 0;
+    entry.isDirectory = (flags & DirectoryFlag) != 0;
+    entry.hasNext = (flags & HasNextFlag) != 0;
+    entry.fileName = fileName;
+    return entry;
+}
+
+QByteArray makeStatusPayload(bool _success, const QString& _message)
+{
+    QByteArray payload;
+    payload.append(_success ? '\x01' : '\x00');
+    payload.append(encodeUtf8(_message));
+    return payload;
+}
+
+bool parseStatusPayload(const QByteArray& _payload, bool _defaultSuccess, QString* _messageOut)
+{
+    if (_payload.isEmpty()) {
+        if (_messageOut) {
+            _messageOut->clear();
+        }
+        return _defaultSuccess;
+    }
+
+    const bool success = _payload.front() != '\0';
+    if (_messageOut) {
+        *_messageOut = decodeUtf8(_payload.mid(1));
     }
     return success;
 }
 
-QString decodeLocal8Bit(const QByteArray& data)
+QString decodeUtf8(const QByteArray& _data)
 {
-    return QString::fromLocal8Bit(data);
+    return QString::fromUtf8(_data);
 }
 
-QByteArray encodeLocal8Bit(const QString& text)
+QByteArray encodeUtf8(const QString& _text)
 {
-    return text.toLocal8Bit();
+    return _text.toUtf8();
 }
 
 }
