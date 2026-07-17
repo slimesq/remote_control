@@ -4,6 +4,12 @@
 #include <QApplication>
 #include <QCommandLineParser>
 
+/**
+ * @brief Starts the remote-control client application.
+ * @param _argc Number of command-line arguments.
+ * @param _argv Command-line argument array.
+ * @return Process exit code.
+ */
 int main(int _argc, char* _argv[])
 {
     QApplication const app{_argc, _argv};

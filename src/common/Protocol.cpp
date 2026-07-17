@@ -17,6 +17,10 @@ constexpr quint8 KnownFlags{InvalidFlag | DirectoryFlag | HasNextFlag};
 constexpr int FileEntryHeaderSize{
     static_cast<int>(sizeof(quint8) + sizeof(quint8) + sizeof(quint32))};
 
+/**
+ * @brief Creates a terminating invalid file entry.
+ * @return Invalid entry with no following packet.
+ */
 FileEntry invalidFileEntry()
 {
     FileEntry entry;

@@ -156,8 +156,11 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 
 - Write all code comments in English.
 - Use `//` for implementation comments.
-- Use `/** ... */` Doxygen comments for reusable public protocol interfaces and non-obvious Windows
-  platform APIs.
+- Document every project function with a concise `/** ... */` Doxygen comment. Put comments on
+  declarations in headers and on definitions only for source-local functions; do not duplicate
+  header documentation in source files.
+- Add `@param` for every named parameter and `@return` for every non-`void` return value. Do not add
+  a return tag to constructors, destructors, or `void` functions.
 - Add concise class/interface documentation for client/server components. Do not repeat a function
   name in prose when the declaration is already self-explanatory.
 - Explain intent, ownership, protocol layout, platform constraints, and surprising behavior rather

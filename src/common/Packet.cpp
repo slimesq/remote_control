@@ -15,12 +15,24 @@ constexpr int PayloadOffset{8};
 constexpr quint32 MinimumLength{4};
 constexpr quint32 MaximumLength{static_cast<quint32>(Packet::MaximumPayloadSize) + MinimumLength};
 
+/**
+ * @brief Reads a little-endian 16-bit value from a byte array.
+ * @param _bytes Source byte array.
+ * @param _offset Byte offset of the value.
+ * @return Decoded 16-bit value.
+ */
 quint16 readUInt16LE(QByteArray const& _bytes, int _offset)
 {
     return static_cast<quint16>(static_cast<unsigned char>(_bytes[_offset])) |
         (static_cast<quint16>(static_cast<unsigned char>(_bytes[_offset + 1])) << BitsPerByte);
 }
 
+/**
+ * @brief Reads a little-endian 32-bit value from a byte array.
+ * @param _bytes Source byte array.
+ * @param _offset Byte offset of the value.
+ * @return Decoded 32-bit value.
+ */
 quint32 readUInt32LE(QByteArray const& _bytes, int _offset)
 {
     return static_cast<quint32>(static_cast<unsigned char>(_bytes[_offset])) |
@@ -77,10 +89,14 @@ std::optional<Packet> Packet::tryParse(QByteArray& _buffer)
 
     while (true)
     {
+        // 1. Resynchronize the receive buffer to the next protocol header.
         int const headerIndex{_buffer.indexOf(headerBytes)};
         if (headerIndex < 0)
         {
-            _buffer.clear();
+            // Preserve a trailing first-header byte because TCP may split FF FE between reads.
+            bool const hasPartialHeader{!_buffer.isEmpty() &&
+                                        static_cast<unsigned char>(_buffer.back()) == 0xFFU};
+            _buffer = hasPartialHeader ? QByteArray{"\xFF", 1} : QByteArray{};
             return std::nullopt;
         }
         if (headerIndex > 0)
@@ -93,14 +109,15 @@ std::optional<Packet> Packet::tryParse(QByteArray& _buffer)
             return std::nullopt;
         }
 
+        // 2. Validate the declared length before trusting frame offsets.
         quint32 const length{readUInt32LE(_buffer, 2)};
         if (length < MinimumLength || length > MaximumLength)
         {
-            // Drop the invalid header and continue scanning for the next packet.
             _buffer.remove(0, 2);
             continue;
         }
 
+        // 3. Leave a partial frame buffered until the remaining bytes arrive.
         qint64 const packetSize64{2LL + 4LL + static_cast<qint64>(length)};
         if (packetSize64 > _buffer.size())
         {
@@ -117,6 +134,7 @@ std::optional<Packet> Packet::tryParse(QByteArray& _buffer)
         }
         quint16 const expectedSum{readUInt16LE(_buffer, PayloadOffset + payloadSize)};
 
+        // 4. Consume the frame only after its checksum has been verified.
         Packet const packet{static_cast<Command>(command), payload};
         if (packet.checksum() != expectedSum)
         {

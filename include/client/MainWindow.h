@@ -22,33 +22,118 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    /** @brief Creates the main client window. */
+    /**
+     * @brief Creates the main client window.
+     * @param _parent Parent widget, or nullptr for a top-level window.
+     */
     explicit MainWindow(QWidget* _parent = nullptr);
 
     /** @brief Destroys the main client window. */
     ~MainWindow() override;
 
-    /** @brief Updates the remote server endpoint displayed and used by the client. */
+    /**
+     * @brief Updates the remote server endpoint displayed and used by the client.
+     * @param _host Remote server host name or address.
+     * @param _port Remote server TCP port.
+     */
     void setEndpoint(QString const& _host, quint16 _port);
 
 private:
+    /**
+     * @brief Creates the download progress dialog on first use.
+     * @return Parent-owned download progress dialog.
+     */
     [[nodiscard]] QProgressDialog* ensureDownloadProgressDialog();
+
+    /**
+     * @brief Updates the busy state and status message.
+     * @param _busy Whether a blocking client operation is active.
+     * @param _message Status message to display.
+     */
     void setBusyState(bool _busy, QString const& _message = {});
+
+    /** @brief Enables actions that are valid for the current state. */
     void updateActionState();
+
+    /** @brief Clears the displayed remote drives and files. */
     void clearRemoteView();
+
+    /** @brief Opens and activates the remote watch window. */
     void showWatchWindow();
+
+    /**
+     * @brief Returns the selected remote file path.
+     * @return Selected remote path, or an empty string when unavailable.
+     */
     [[nodiscard]] QString currentSelectedFilePath() const;
+
+    /**
+     * @brief Returns the selected remote file name.
+     * @return Selected file name, or an empty string when unavailable.
+     */
     [[nodiscard]] QString currentSelectedFileName() const;
+
+    /** @brief Requests opening the selected remote file. */
     void openSelectedFile();
+
+    /** @brief Downloads the selected remote file. */
     void downloadSelectedFile();
+
+    /** @brief Requests deletion of the selected remote item. */
     void deleteSelectedFile();
+
+    /** @brief Connects UI actions to client operations. */
     void wireSignals();
-    void requestSelectedDirectory(QTreeWidgetItem* _item);
+
+    /**
+     * @brief Displays a cached directory or requests fresh contents.
+     * @param _item Tree item containing the remote directory path.
+     * @param _forceRefresh Whether cached contents must be ignored.
+     */
+    void requestSelectedDirectory(QTreeWidgetItem* _item, bool _forceRefresh = false);
+
+    /**
+     * @brief Displays the files contained in one directory listing.
+     * @param _path Remote directory path.
+     * @param _entries Cached or newly received directory entries.
+     */
+    void displayDirectoryFiles(QString const& _path,
+                               QList<remote_control::FileEntry> const& _entries);
+
+    /**
+     * @brief Populates the tree with remote drive roots.
+     * @param _drives Remote drive identifiers.
+     */
     void populateDriveTree(QStringList const& _drives);
+
+    /**
+     * @brief Displays a remote directory listing.
+     * @param _path Listed remote directory path.
+     * @param _entries Entries returned for the directory.
+     */
     void updateDirectoryView(QString const& _path,
                              QList<remote_control::FileEntry> const& _entries);
+
+    /**
+     * @brief Finds a tree item by its remote path.
+     * @param _path Remote path to locate.
+     * @return Matching tree item, or nullptr when not found.
+     */
     [[nodiscard]] QTreeWidgetItem* findItemByPath(QString const& _path) const;
+
+    /**
+     * @brief Normalizes a remote drive root.
+     * @param _drive Remote drive identifier.
+     * @return Normalized drive root.
+     */
     [[nodiscard]] static QString normalizeDrive(QString const& _drive);
+
+    /**
+     * @brief Joins a remote directory and file name.
+     * @param _basePath Remote parent directory.
+     * @param _fileName Child file or directory name.
+     * @return Combined remote path.
+     */
     [[nodiscard]] static QString joinPath(QString const& _basePath, QString const& _fileName);
 
     RemoteClient* m_client{nullptr};

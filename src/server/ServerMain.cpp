@@ -11,11 +11,18 @@
 
 #include <cstdlib>
 
+/**
+ * @brief Starts the remote-control server or performs a maintenance action.
+ * @param argc Number of command-line arguments.
+ * @param argv Command-line argument array.
+ * @return Process exit code.
+ */
 int main(int argc, char* argv[])
 {
     QApplication app{argc, argv};
     app.setQuitOnLastWindowClosed(false);
 
+    // 1. Parse runtime options and one-shot maintenance actions.
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Remote Control Qt Server"));
     parser.addHelpOption();
@@ -52,6 +59,7 @@ int main(int argc, char* argv[])
     parser.addOption(lockTestOption);
     parser.process(app);
 
+    // 2. Complete one-shot actions before creating a listening server.
     if (parser.isSet(elevateOption))
     {
         QStringList elevatedArguments{QCoreApplication::arguments()};
@@ -89,6 +97,7 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
+    // 3. Start listening before enabling optional local UI features.
     quint16 const port{parser.value(portOption).toUShort()};
 
     RemoteServer server;
@@ -100,6 +109,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+    // 4. Enable optional tray and timed-lock features only for a running server.
     if (!parser.isSet(noTrayOption) && QSystemTrayIcon::isSystemTrayAvailable())
     {
         auto* const trayController{new ServerTrayController{&server, &app}};

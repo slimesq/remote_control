@@ -8,10 +8,10 @@
 
 ```text
 RemoteControlClient
-    │
-    │ TCP Packet
-    ▼
-RemoteControlServer ──► CommandService ──► Windows/文件系统操作
+    ├─ 轻量短连接 ─► RemoteSession ─► CommandService
+    ├─ 文件任务连接 ─► FileRequestPool ─► FileRequestWorker ─► 目录/下载/删除
+    ├─ 控制长连接 ─► ControlStreamThread ─► 鼠标/锁定/解锁
+    └─ 监控长连接 ─► WatchStreamThread ─► 截图
 
 RemoteControlSmokeTest ──► 使用相同协议验证服务端
 ```
@@ -55,8 +55,11 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 
 - [RemoteClient.h](../include/client/RemoteClient.h)
 - [RemoteClient.cpp](../src/client/RemoteClient.cpp)
+- [ControlConnectionWorker.cpp](../src/client/ControlConnectionWorker.cpp)
+- [DownloadWorker.cpp](../src/client/DownloadWorker.cpp)
+- [WatchConnectionWorker.cpp](../src/client/WatchConnectionWorker.cpp)
 
-一次典型请求的流程：
+普通轻量命令使用短连接：
 
 ```text
 用户操作
@@ -69,11 +72,30 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 
 可以先跟踪 `testConnection()`，它的数据最少、调用链最短。
 
+远程屏幕使用独立工作线程和持久连接：
+
+```text
+WatchWindow 定时请求下一帧
+  → RemoteClient 将任务投递给 WatchConnectionWorker
+  → 工作线程复用 QTcpSocket 发送 WatchScreen Packet
+  → 工作线程接收并解码 PNG
+  → GUI 线程接收 QImage 并刷新画面
+```
+
+同一时刻只允许一帧处于请求中，上一帧完成后才会发送下一帧，避免慢网络下积压请求。
+
+鼠标、锁定和解锁使用单独的 `ControlConnectionWorker` 长连接。控制命令一次只发送一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用 `DownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每读一个固定大小的 chunk 就立即发送，不会把整个文件保存在内存中。
+
 ### 第四步：服务端
 
 - [RemoteServer.cpp](../src/server/RemoteServer.cpp)
 - [RemoteSession.cpp](../src/server/RemoteSession.cpp)
 - [CommandService.cpp](../src/server/CommandService.cpp)
+- [ControlStreamThread.cpp](../src/server/ControlStreamThread.cpp)
+- [FileRequestPool.cpp](../src/server/FileRequestPool.cpp)
+- [FileRequestWorker.cpp](../src/server/FileRequestWorker.cpp)
+- [WatchStreamThread.cpp](../src/server/WatchStreamThread.cpp)
+- [PlatformIntegration.cpp](../src/server/PlatformIntegration.cpp)
 
 服务端调用链：
 
@@ -81,11 +103,11 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 RemoteServer 接受连接
   → 为连接创建 RemoteSession
   → RemoteSession 解析 Packet
-  → CommandService 分派并执行命令
+  → 按命令类型保留短连接或转交工作线程
   → 序列化响应 Packet
 ```
 
-`CommandService` 集中了磁盘枚举、目录浏览、文件操作、截图、鼠标和锁屏等功能，是理解服务端业务的核心。
+`CommandService` 只处理轻量命令以及必须在 GUI 线程操作的锁屏窗口。`RemoteSession` 会把目录、下载和删除请求连同 socket 转交给 `FileRequestPool`。线程池按需创建 2 至 4 个常驻线程，空闲的 `FileRequestWorker` 会继续处理排队任务，避免为每次文件请求重复创建和销毁线程；队列同时限制了待处理请求数量。`ControlChannel` 和 `WatchScreen` 分别转交给独立的持久连接线程，避免截图数据阻塞鼠标输入。锁定和解锁由控制线程接收，再以 queued invocation 投递给 GUI 线程。
 
 ### 第五步：公共协议
 
@@ -107,6 +129,10 @@ RemoteServer 接受连接
 - [WatchWindow.h](../include/client/WatchWindow.h)
 - [WatchWindow.cpp](../src/client/WatchWindow.cpp)
 - [WatchWindow.ui](../src/client/WatchWindow.ui)
+- [ControlConnectionWorker.cpp](../src/client/ControlConnectionWorker.cpp)
+- [WatchConnectionWorker.cpp](../src/client/WatchConnectionWorker.cpp)
+- [ControlStreamThread.cpp](../src/server/ControlStreamThread.cpp)
+- [WatchStreamThread.cpp](../src/server/WatchStreamThread.cpp)
 - [LockWindow.cpp](../src/server/LockWindow.cpp)
 
 这一部分适合学习：
@@ -114,6 +140,9 @@ RemoteServer 接受连接
 - 自定义 `QWidget` 绘制
 - 鼠标事件坐标转换
 - `QTimer` 合并高频事件
+- `QThread`、queued signal/slot 和对象线程归属
+- 持久 TCP 连接与单帧流量控制
+- 独立屏幕通道与控制通道，避免 head-of-line blocking
 - 截图数据在网络中的传输与显示
 
 ## 3. Qt 知识点索引
@@ -125,9 +154,10 @@ RemoteServer 接受连接
 | 信号槽 | `MainWindow::wireSignals()`、`RemoteClient` |
 | TCP 客户端/服务端 | `QTcpSocket`、`QTcpServer` |
 | 对象生命周期 | `QObject` parent、`std::unique_ptr` |
+| 工作线程 | `QThread`、worker object、queued connection |
 | 定时任务 | `QTimer` |
 | 文件系统 | `QFile`、`QDir`、`QFileInfo`、`QSaveFile` |
-| 图片与绘制 | `QImage`、`QPainter`、`QScreen` |
+| 图片与绘制 | `QImage`、`QPainter`、Windows GDI |
 | 系统集成 | `QSystemTrayIcon`、`QSettings`、Windows API |
 | CMake Qt 集成 | `AUTOMOC`、`AUTOUIC`、Qt target linking |
 

@@ -17,6 +17,12 @@ constexpr int LongFileNameRepeatCount{100};
 constexpr ushort UnicodeCharacterCode{0x6587};
 constexpr int MinimumLongPayloadSize{256};
 
+/**
+ * @brief Records whether a protocol-test condition passed.
+ * @param _condition Condition to verify.
+ * @param _message Failure message printed when the condition is false.
+ * @return The supplied condition.
+ */
 bool expect(bool _condition, char const* _message)
 {
     if (!_condition)
@@ -26,6 +32,11 @@ bool expect(bool _condition, char const* _message)
     return _condition;
 }
 
+/**
+ * @brief Creates a packet header with the requested length field.
+ * @param _length Packet length field to encode.
+ * @return Serialized packet header.
+ */
 QByteArray makePacketHeader(quint32 _length)
 {
     QByteArray bytes;
@@ -38,6 +49,10 @@ QByteArray makePacketHeader(quint32 _length)
     return bytes;
 }
 
+/**
+ * @brief Verifies recovery from malformed packet lengths.
+ * @return true when all malformed-length cases pass; otherwise false.
+ */
 bool testMalformedPacketLengths()
 {
     remote_control::Packet const expectedPacket{remote_control::Command::TestConnection,
@@ -68,6 +83,40 @@ bool testMalformedPacketLengths()
     return passed;
 }
 
+/**
+ * @brief Verifies parsing when TCP splits the two-byte packet header.
+ * @return true when the partial header is retained and the packet is reconstructed.
+ */
+bool testSplitPacketHeader()
+{
+    remote_control::Packet const expectedPacket{remote_control::Command::TestConnection,
+                                                QByteArrayLiteral("split-header")};
+    QByteArray const serialized{expectedPacket.serialize()};
+    QByteArray buffer{QByteArrayLiteral("noise\xFF")};
+
+    bool passed{true};
+    auto const incompletePacket{remote_control::Packet::tryParse(buffer)};
+    passed &= expect(!incompletePacket.has_value(), "split header should remain incomplete");
+    passed &= expect(buffer == QByteArray{"\xFF", 1},
+                     "parser should retain the first byte of a split header");
+
+    buffer.append(serialized.mid(1));
+    auto const parsedPacket{remote_control::Packet::tryParse(buffer)};
+    passed &= expect(parsedPacket.has_value(), "split header packet should be reconstructed");
+    if (parsedPacket.has_value())
+    {
+        passed &= expect(parsedPacket->command == expectedPacket.command,
+                         "split header command should match");
+        passed &= expect(parsedPacket->payload == expectedPacket.payload,
+                         "split header payload should match");
+    }
+    return passed;
+}
+
+/**
+ * @brief Verifies UTF-8 file-entry serialization.
+ * @return true when the round-trip test passes; otherwise false.
+ */
 bool testUtf8FileEntryRoundTrip()
 {
     remote_control::FileEntry expectedEntry;
@@ -92,6 +141,10 @@ bool testUtf8FileEntryRoundTrip()
     return passed;
 }
 
+/**
+ * @brief Verifies rejection of truncated file-entry data.
+ * @return true when truncated data is rejected; otherwise false.
+ */
 bool testInvalidFileEntryPayload()
 {
     remote_control::FileEntry entry;
@@ -104,6 +157,10 @@ bool testInvalidFileEntryPayload()
                   "truncated file entry should be rejected");
 }
 
+/**
+ * @brief Verifies UTF-8 status-message serialization.
+ * @return true when the round-trip test passes; otherwise false.
+ */
 bool testUtf8StatusRoundTrip()
 {
     QString const expectedMessage{QStringLiteral("操作失败：文件不存在")};
@@ -116,10 +173,15 @@ bool testUtf8StatusRoundTrip()
 
 }  // namespace
 
+/**
+ * @brief Runs the protocol test suite.
+ * @return EXIT_SUCCESS when all tests pass; otherwise EXIT_FAILURE.
+ */
 int main()
 {
     bool passed{true};
     passed &= testMalformedPacketLengths();
+    passed &= testSplitPacketHeader();
     passed &= testUtf8FileEntryRoundTrip();
     passed &= testInvalidFileEntryPayload();
     passed &= testUtf8StatusRoundTrip();

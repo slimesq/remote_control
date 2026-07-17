@@ -388,9 +388,6 @@ QStatusBar {
           <property name="sortingEnabled">
            <bool>false</bool>
           </property>
-          <attribute name="horizontalHeaderStretchLastSection">
-           <bool>true</bool>
-          </attribute>
           <column>
            <property name="text">
             <string>Name</string>

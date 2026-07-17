@@ -24,6 +24,7 @@ enum class Command : quint16
     LockMachine = 7,
     UnlockMachine = 8,
     DeleteFile = 9,
+    ControlChannel = 10,
     TestConnection = 1981,
 };
 
@@ -78,25 +79,51 @@ struct FileEntry
     /** @brief File or directory name without the parent path. */
     QString fileName;
 
-    /** @brief Serializes this entry into its protocol payload. */
+    /**
+     * @brief Serializes this entry into its protocol payload.
+     * @return Serialized file-entry payload.
+     */
     [[nodiscard]] QByteArray toPayload() const;
 
-    /** @brief Parses an entry from a protocol payload. */
+    /**
+     * @brief Parses an entry from a protocol payload.
+     * @param _payload Serialized file-entry payload.
+     * @return Parsed entry, marked invalid when validation fails.
+     */
     [[nodiscard]] static FileEntry fromPayload(QByteArray const& _payload);
 };
 
-/** @brief Creates the common success/failure response payload. */
+/**
+ * @brief Creates the common success/failure response payload.
+ * @param _success Whether the command succeeded.
+ * @param _message Optional user-facing result message.
+ * @return Serialized status payload.
+ */
 [[nodiscard]] QByteArray makeStatusPayload(bool _success, QString const& _message = {});
 
-/** @brief Parses a common success/failure response payload. */
+/**
+ * @brief Parses a common success/failure response payload.
+ * @param _payload Serialized status payload.
+ * @param _defaultSuccess Result used for an empty payload.
+ * @param _messageOut Optional output for the decoded message.
+ * @return Decoded success state.
+ */
 [[nodiscard]] bool parseStatusPayload(QByteArray const& _payload,
                                       bool _defaultSuccess,
                                       QString* _messageOut = nullptr);
 
-/** @brief Decodes UTF-8 protocol bytes into a QString. */
+/**
+ * @brief Decodes UTF-8 protocol bytes into a QString.
+ * @param _data UTF-8 bytes to decode.
+ * @return Decoded string.
+ */
 [[nodiscard]] QString decodeUtf8(QByteArray const& _data);
 
-/** @brief Encodes a QString as UTF-8 protocol bytes. */
+/**
+ * @brief Encodes a QString as UTF-8 protocol bytes.
+ * @param _text String to encode.
+ * @return UTF-8 encoded bytes.
+ */
 [[nodiscard]] QByteArray encodeUtf8(QString const& _text);
 
 }  // namespace remote_control

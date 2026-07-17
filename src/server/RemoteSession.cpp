@@ -1,6 +1,7 @@
 #include "server/RemoteSession.h"
 
 #include "server/CommandService.h"
+#include "server/RemoteServer.h"
 
 #include <QTcpSocket>
 #include <QTimer>
@@ -13,10 +14,11 @@ constexpr int MaxIncomingBufferBytes{1024 * 1024};
 
 }  // namespace
 
-RemoteSession::RemoteSession(QTcpSocket* _socket, CommandService* _commandService, QObject* _parent)
+RemoteSession::RemoteSession(QTcpSocket* _socket, RemoteServer* _server, QObject* _parent)
     : QObject{_parent},
       m_socket{_socket},
-      m_commandService{_commandService},
+      m_server{_server},
+      m_commandService{_server->commandService()},
       m_idleTimer{new QTimer{this}}
 {
     this->m_socket->setParent(this);
@@ -31,16 +33,18 @@ RemoteSession::RemoteSession(QTcpSocket* _socket, CommandService* _commandServic
 
 void RemoteSession::onReadyRead()
 {
+    // 1. Refresh the deadline and retain bytes from partial TCP frames.
     this->restartIdleTimer();
     this->m_buffer.append(this->m_socket->readAll());
+    // 2. Reject peers that exceed the bounded receive buffer.
     if (this->m_buffer.size() > MaxIncomingBufferBytes)
     {
         this->m_socket->abort();
         return;
     }
+    // 3. Parse at most one complete request for this short-lived session.
     while (true)
     {
-        // Each TCP session handles at most one fully parsed request packet.
         auto const packet{remote_control::Packet::tryParse(this->m_buffer)};
         if (!packet.has_value())
         {
@@ -74,15 +78,61 @@ void RemoteSession::processPacket(remote_control::Packet const& _packet)
     {
         return;
     }
+    if (_packet.command == remote_control::Command::WatchScreen)
+    {
+        if (!_packet.payload.isEmpty())
+        {
+            this->m_handled = true;
+            this->m_socket->abort();
+            return;
+        }
+        this->m_server->startWatchStream(this->takeSocket());
+        return;
+    }
+
+    if (_packet.command == remote_control::Command::ControlChannel)
+    {
+        if (!_packet.payload.isEmpty())
+        {
+            this->m_handled = true;
+            this->m_socket->abort();
+            return;
+        }
+        this->m_server->startControlStream(this->takeSocket());
+        return;
+    }
+
+    if (_packet.command == remote_control::Command::ListDirectory ||
+        _packet.command == remote_control::Command::DownloadFile ||
+        _packet.command == remote_control::Command::DeleteFile)
+    {
+        this->m_server->startFileRequest(this->takeSocket(), _packet);
+        return;
+    }
+
+    // 1. Prevent re-entry before invoking the synchronous command handler.
     this->m_handled = true;
-    // Commands are synchronous here: collect all response packets, write them,
-    // then close the socket.
+    // 2. Queue every response packet in command-defined order.
     QList<remote_control::Packet> const responses{this->m_commandService->handle(_packet)};
     for (remote_control::Packet const& response : responses)
     {
         this->m_socket->write(response.serialize());
     }
+    // 3. Close the short-lived connection after all responses are queued.
     this->m_socket->disconnectFromHost();
+}
+
+QTcpSocket* RemoteSession::takeSocket()
+{
+    // Transfer ownership only after callbacks and the session timeout have been disabled.
+    this->m_handled = true;
+    this->m_idleTimer->stop();
+    QObject::disconnect(this->m_socket, nullptr, this, nullptr);
+    this->m_socket->setParent(nullptr);
+    QTcpSocket* const socket{this->m_socket};
+    this->m_socket = nullptr;
+    this->deleteLater();
+    return socket;
 }
 
 void RemoteSession::restartIdleTimer()

@@ -14,12 +14,18 @@
 
 #include <cstdlib>
 #include <functional>
+#include <future>
 #include <iostream>
+#include <vector>
 
 namespace
 {
 
 constexpr int NetworkTimeoutMs{5000};
+constexpr int LargeDownloadSize{256 * 1024 + 37};
+constexpr int ConcurrentFileRequestCount{6};
+constexpr int ControlCommandCount{2};
+constexpr int ExpectedControlResponseCount{ControlCommandCount + 1};
 
 struct ResponseBundle
 {
@@ -27,6 +33,14 @@ struct ResponseBundle
     QString error;
 };
 
+/**
+ * @brief Sends one command and collects all response packets.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _command Protocol command to send.
+ * @param _payload Command-specific payload.
+ * @return Collected packets and any network error.
+ */
 ResponseBundle sendCommand(QString const& _host,
                            quint16 _port,
                            remote_control::Command _command,
@@ -90,6 +104,165 @@ ResponseBundle sendCommand(QString const& _host,
     return result;
 }
 
+/**
+ * @brief Requests multiple screen frames over one persistent TCP connection.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _frameCount Number of frames to request sequentially.
+ * @return Collected frame packets and any network or protocol error.
+ */
+ResponseBundle requestWatchFrames(QString const& _host, quint16 _port, int _frameCount)
+{
+    ResponseBundle result;
+    QTcpSocket socket;
+    socket.connectToHost(_host, _port);
+    if (!socket.waitForConnected(NetworkTimeoutMs))
+    {
+        result.error = socket.errorString();
+        return result;
+    }
+
+    QByteArray buffer;
+    for (int frameIndex{0}; frameIndex < _frameCount; ++frameIndex)
+    {
+        QByteArray const request{
+            remote_control::Packet{remote_control::Command::WatchScreen}.serialize()};
+        if (socket.write(request) < 0 || !socket.waitForBytesWritten(NetworkTimeoutMs))
+        {
+            result.error = socket.errorString();
+            return result;
+        }
+
+        // Keep exactly one frame outstanding so the test matches the client flow-control rule.
+        while (result.packets.size() <= frameIndex)
+        {
+            auto const packet{remote_control::Packet::tryParse(buffer)};
+            if (packet.has_value())
+            {
+                if (packet->command != remote_control::Command::WatchScreen)
+                {
+                    result.error = QStringLiteral("Unexpected monitor response command");
+                    return result;
+                }
+                result.packets.push_back(packet.value());
+                continue;
+            }
+
+            if (socket.bytesAvailable() == 0 && !socket.waitForReadyRead(NetworkTimeoutMs))
+            {
+                result.error = socket.errorString().isEmpty()
+                    ? QStringLiteral("Timed out waiting for monitor frame")
+                    : socket.errorString();
+                return result;
+            }
+            buffer.append(socket.readAll());
+        }
+    }
+
+    socket.disconnectFromHost();
+    if (socket.state() != QAbstractSocket::UnconnectedState)
+    {
+        socket.waitForDisconnected(NetworkTimeoutMs);
+    }
+    return result;
+}
+
+/**
+ * @brief Exchanges one request and response packet on an existing connection.
+ * @param _socket Connected socket used for the exchange.
+ * @param _buffer Persistent receive buffer for partial packets.
+ * @param _request Request packet to send.
+ * @param _responseOut Output for the parsed response packet.
+ * @param _errorOut Output for a network or protocol error.
+ * @return true when one complete response is received; otherwise false.
+ */
+bool exchangePacket(QTcpSocket* _socket,
+                    QByteArray* _buffer,
+                    remote_control::Packet const& _request,
+                    remote_control::Packet* _responseOut,
+                    QString* _errorOut)
+{
+    QByteArray const bytes{_request.serialize()};
+    if (_socket->write(bytes) < 0 || !_socket->waitForBytesWritten(NetworkTimeoutMs))
+    {
+        *_errorOut = _socket->errorString();
+        return false;
+    }
+
+    while (true)
+    {
+        auto const response{remote_control::Packet::tryParse(*_buffer)};
+        if (response.has_value())
+        {
+            *_responseOut = response.value();
+            return true;
+        }
+        if (_socket->bytesAvailable() == 0 && !_socket->waitForReadyRead(NetworkTimeoutMs))
+        {
+            *_errorOut = _socket->errorString().isEmpty()
+                ? QStringLiteral("Timed out waiting for a control response")
+                : _socket->errorString();
+            return false;
+        }
+        _buffer->append(_socket->readAll());
+    }
+}
+
+/**
+ * @brief Sends ordered commands through one persistent control connection.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _commands Commands to send after the control-channel handshake.
+ * @return Handshake and command responses, plus any network error.
+ */
+ResponseBundle requestControlCommands(QString const& _host,
+                                      quint16 _port,
+                                      QList<remote_control::Packet> const& _commands)
+{
+    ResponseBundle result;
+    QTcpSocket socket;
+    socket.connectToHost(_host, _port);
+    if (!socket.waitForConnected(NetworkTimeoutMs))
+    {
+        result.error = socket.errorString();
+        return result;
+    }
+
+    QByteArray buffer;
+    remote_control::Packet response;
+    if (!exchangePacket(&socket,
+                        &buffer,
+                        remote_control::Packet{remote_control::Command::ControlChannel},
+                        &response,
+                        &result.error))
+    {
+        return result;
+    }
+    result.packets.push_back(response);
+
+    for (remote_control::Packet const& command : _commands)
+    {
+        if (!exchangePacket(&socket, &buffer, command, &response, &result.error))
+        {
+            return result;
+        }
+        result.packets.push_back(response);
+    }
+
+    socket.disconnectFromHost();
+    if (socket.state() != QAbstractSocket::UnconnectedState)
+    {
+        socket.waitForDisconnected(NetworkTimeoutMs);
+    }
+    return result;
+}
+
+/**
+ * @brief Records whether a smoke-test condition passed.
+ * @param _condition Condition to verify.
+ * @param _message Test result message.
+ * @return The supplied condition.
+ */
 bool expect(bool _condition, QString const& _message)
 {
     if (!_condition)
@@ -101,6 +274,11 @@ bool expect(bool _condition, QString const& _message)
     return true;
 }
 
+/**
+ * @brief Selects the first drive from a drive-list response.
+ * @param _packets Drive-list response packets.
+ * @return First normalized drive root, or an empty string.
+ */
 QString pickDrive(QList<remote_control::Packet> const& _packets)
 {
     if (_packets.isEmpty())
@@ -121,6 +299,11 @@ QString pickDrive(QList<remote_control::Packet> const& _packets)
     return drive + '\\';
 }
 
+/**
+ * @brief Validates a complete streamed directory response.
+ * @param _packets Directory response packets.
+ * @return true when the response is valid and terminated; otherwise false.
+ */
 bool validateDirectoryResponse(QList<remote_control::Packet> const& _packets)
 {
     if (_packets.isEmpty())
@@ -144,6 +327,60 @@ bool validateDirectoryResponse(QList<remote_control::Packet> const& _packets)
     return sawEnd;
 }
 
+/**
+ * @brief Verifies packets returned by a successful file download.
+ * @param _response Download response to validate.
+ * @param _expectedContent Expected file contents.
+ * @param _label Label used in test output.
+ * @return true when the downloaded content matches; otherwise false.
+ */
+bool validateDownloadResponse(ResponseBundle const& _response,
+                              QByteArray const& _expectedContent,
+                              QString const& _label)
+{
+    if (!expect(_response.error.isEmpty(), _label + QStringLiteral(": request should succeed")))
+    {
+        return false;
+    }
+    if (!expect(!_response.packets.isEmpty(), _label + QStringLiteral(": should return packets")))
+    {
+        return false;
+    }
+    if (!expect(_response.packets.first().payload.size() == static_cast<int>(sizeof(qint64)),
+                _label + QStringLiteral(": should start with length header")))
+    {
+        return false;
+    }
+
+    qint64 expectedSize{-1};
+    {
+        QDataStream stream{_response.packets.first().payload};
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream >> expectedSize;
+    }
+    if (!expect(expectedSize == _expectedContent.size(),
+                _label + QStringLiteral(": length should match source file")))
+    {
+        return false;
+    }
+
+    QByteArray downloaded;
+    for (int index{1}; index < _response.packets.size(); ++index)
+    {
+        downloaded.append(_response.packets[index].payload);
+    }
+    return expect(downloaded == _expectedContent,
+                  _label + QStringLiteral(": content should match"));
+}
+
+/**
+ * @brief Requests and verifies one successful file download.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _remotePath Remote file path to download.
+ * @param _expectedContent Expected file contents.
+ * @return true when the downloaded content matches; otherwise false.
+ */
 bool validateDownload(QString const& _host,
                       quint16 _port,
                       QString const& _remotePath,
@@ -153,41 +390,16 @@ bool validateDownload(QString const& _host,
                                               _port,
                                               remote_control::Command::DownloadFile,
                                               remote_control::encodeUtf8(_remotePath))};
-    if (!expect(response.error.isEmpty(), QStringLiteral("download request should succeed")))
-    {
-        return false;
-    }
-    if (!expect(!response.packets.isEmpty(), QStringLiteral("download should return packets")))
-    {
-        return false;
-    }
-    if (!expect(response.packets.first().payload.size() == static_cast<int>(sizeof(qint64)),
-                QStringLiteral("download should start with length header")))
-    {
-        return false;
-    }
-
-    qint64 expectedSize{-1};
-    {
-        QDataStream stream{response.packets.first().payload};
-        stream.setByteOrder(QDataStream::LittleEndian);
-        stream >> expectedSize;
-    }
-    if (!expect(expectedSize == _expectedContent.size(),
-                QStringLiteral("download length should match source file")))
-    {
-        return false;
-    }
-
-    QByteArray downloaded;
-    for (int index{1}; index < response.packets.size(); ++index)
-    {
-        downloaded.append(response.packets[index].payload);
-    }
-    return expect(downloaded == _expectedContent,
-                  QStringLiteral("downloaded content should match source file"));
+    return validateDownloadResponse(response, _expectedContent, QStringLiteral("download request"));
 }
 
+/**
+ * @brief Verifies a failed file download response.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _remotePath Missing or unreadable remote file path.
+ * @return true when the server reports failure correctly; otherwise false.
+ */
 bool validateDownloadFailure(QString const& _host, quint16 _port, QString const& _remotePath)
 {
     ResponseBundle const response{sendCommand(_host,
@@ -213,6 +425,12 @@ bool validateDownloadFailure(QString const& _host, quint16 _port, QString const&
                   QStringLiteral("failed download should return a negative length marker"));
 }
 
+/**
+ * @brief Checks whether a directory response contains the expected names.
+ * @param _packets Directory response packets.
+ * @param _names Entry names expected in the response.
+ * @return true when every expected name is present; otherwise false.
+ */
 bool directoryContainsNames(QList<remote_control::Packet> const& _packets,
                             QStringList const& _names)
 {
@@ -237,6 +455,14 @@ bool directoryContainsNames(QList<remote_control::Packet> const& _packets,
     return true;
 }
 
+/**
+ * @brief Validates a common command-status response.
+ * @param _response Response packets and network error.
+ * @param _command Expected response command.
+ * @param _expectedSuccess Expected status value.
+ * @param _label Label used in test output.
+ * @return true when the response matches all expectations; otherwise false.
+ */
 bool validateStatusReply(ResponseBundle const& _response,
                          remote_control::Command _command,
                          bool _expectedSuccess,
@@ -266,6 +492,12 @@ bool validateStatusReply(ResponseBundle const& _response,
 
 }  // namespace
 
+/**
+ * @brief Runs end-to-end smoke tests against a running server.
+ * @param argc Number of command-line arguments.
+ * @param argv Command-line argument array.
+ * @return EXIT_SUCCESS when all tests pass; otherwise EXIT_FAILURE.
+ */
 int main(int argc, char* argv[])
 {
     QGuiApplication const app{argc, argv};
@@ -335,7 +567,10 @@ int main(int argc, char* argv[])
     QString const uniqueSuffix{QString::number(QRandomGenerator::global()->generate(), 16)};
     QString const downloadSourcePath{
         tempDir.filePath(QStringLiteral("download-source-%1.txt").arg(uniqueSuffix))};
-    QByteArray const expectedContent{"qt smoke download payload\nline 2"};
+    QByteArray const downloadPattern{QByteArrayLiteral("0123456789ABCDEF")};
+    QByteArray const expectedContent{
+        downloadPattern.repeated(LargeDownloadSize / downloadPattern.size() + 1)
+            .left(LargeDownloadSize)};
     {
         QFile source{downloadSourcePath};
         if (!source.open(QIODevice::WriteOnly))
@@ -347,6 +582,26 @@ int main(int argc, char* argv[])
     }
 
     allPassed &= validateDownload(host, port, downloadSourcePath, expectedContent);
+
+    // Submit more requests than the server's maximum file-worker count to exercise its queue.
+    std::vector<std::future<ResponseBundle>> concurrentDownloads;
+    concurrentDownloads.reserve(ConcurrentFileRequestCount);
+    for (int requestIndex{0}; requestIndex < ConcurrentFileRequestCount; ++requestIndex)
+    {
+        concurrentDownloads.emplace_back(std::async(std::launch::async, [=] {
+            return sendCommand(host,
+                               port,
+                               remote_control::Command::DownloadFile,
+                               remote_control::encodeUtf8(downloadSourcePath));
+        }));
+    }
+    for (int requestIndex{0}; requestIndex < ConcurrentFileRequestCount; ++requestIndex)
+    {
+        allPassed &= validateDownloadResponse(
+            concurrentDownloads[requestIndex].get(),
+            expectedContent,
+            QStringLiteral("concurrent download %1").arg(requestIndex + 1));
+    }
 
     QString const unicodeDirName{QStringLiteral("unicode_dir_%1_").arg(uniqueSuffix) +
                                  QString::fromUcs4(U"\u6D4B\u8BD5")};
@@ -433,16 +688,16 @@ int main(int argc, char* argv[])
                                      false,
                                      QStringLiteral("delete missing target request"));
 
-    ResponseBundle const watchResponse{
-        sendCommand(host, port, remote_control::Command::WatchScreen)};
+    constexpr int WatchFrameCount{2};
+    ResponseBundle const watchResponse{requestWatchFrames(host, port, WatchFrameCount)};
     allPassed &= expect(watchResponse.error.isEmpty(),
-                        QStringLiteral("watch screen request should succeed"));
-    allPassed &= expect(watchResponse.packets.size() == 1,
-                        QStringLiteral("watch screen should return one image packet"));
-    if (!watchResponse.packets.isEmpty())
+                        QStringLiteral("persistent watch screen requests should succeed"));
+    allPassed &= expect(watchResponse.packets.size() == WatchFrameCount,
+                        QStringLiteral("one monitor connection should return two image packets"));
+    for (remote_control::Packet const& packet : watchResponse.packets)
     {
         QImage image;
-        bool const imageLoaded{image.loadFromData(watchResponse.packets.first().payload, "PNG")};
+        bool const imageLoaded{image.loadFromData(packet.payload, "PNG")};
         allPassed &=
             expect(imageLoaded, QStringLiteral("watch screen packet should decode as PNG"));
         allPassed &= expect(imageLoaded && !image.isNull(),
@@ -457,12 +712,30 @@ int main(int argc, char* argv[])
     mouseEvent.y = cursorPosition.y();
     QByteArray const mousePayload{reinterpret_cast<char const*>(&mouseEvent),
                                   static_cast<int>(sizeof(mouseEvent))};
-    ResponseBundle const mouseResponse{
-        sendCommand(host, port, remote_control::Command::MouseEvent, mousePayload)};
-    allPassed &= validateStatusReply(mouseResponse,
-                                     remote_control::Command::MouseEvent,
-                                     true,
-                                     QStringLiteral("mouse event request"));
+    ResponseBundle const controlResponse{requestControlCommands(
+        host,
+        port,
+        {remote_control::Packet{remote_control::Command::MouseEvent, mousePayload},
+         remote_control::Packet{remote_control::Command::MouseEvent, mousePayload}})};
+    allPassed &= expect(controlResponse.error.isEmpty(),
+                        QStringLiteral("persistent control requests should succeed"));
+    allPassed &= expect(controlResponse.packets.size() == ExpectedControlResponseCount,
+                        QStringLiteral("one control connection should return three responses"));
+    if (controlResponse.packets.size() == ExpectedControlResponseCount)
+    {
+        allPassed &= expect(
+            controlResponse.packets.first().command == remote_control::Command::ControlChannel,
+            QStringLiteral("control channel should acknowledge its handshake"));
+        for (int responseIndex{1}; responseIndex < controlResponse.packets.size(); ++responseIndex)
+        {
+            QString message;
+            remote_control::Packet const& response{controlResponse.packets[responseIndex]};
+            bool const success{
+                remote_control::parseStatusPayload(response.payload, false, &message)};
+            allPassed &= expect(response.command == remote_control::Command::MouseEvent && success,
+                                QStringLiteral("control channel should execute mouse events"));
+        }
+    }
 
     QString const executablePath{QStringLiteral("C:/Windows/System32/whoami.exe")};
     ResponseBundle const runResponse{sendCommand(

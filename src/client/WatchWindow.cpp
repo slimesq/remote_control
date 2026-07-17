@@ -17,6 +17,11 @@ constexpr int MinimumScreenWidth{800};
 constexpr int MinimumScreenHeight{500};
 constexpr int WatchFrameIntervalMs{200};
 
+/**
+ * @brief Returns a mouse position for both Qt 5 and Qt 6.
+ * @param _event Mouse event supplied by Qt.
+ * @return Mouse position in widget coordinates.
+ */
 QPoint mouseEventPosition(QMouseEvent const* _event)
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -190,5 +195,7 @@ void WatchWindow::showEvent(QShowEvent* _event)
 void WatchWindow::closeEvent(QCloseEvent* _event)
 {
     this->m_timer->stop();
+    this->m_client->stopWatchStream();
+    this->m_client->stopControlStream();
     QDialog::closeEvent(_event);
 }
