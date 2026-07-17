@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Packet.h"
+#include "common/Packet.h"
 
 #include <QObject>
 
@@ -8,11 +8,13 @@ class QTcpSocket;
 class QTimer;
 class CommandService;
 
+/** @brief Parses requests and writes responses for one connected TCP client. */
 class RemoteSession : public QObject
 {
     Q_OBJECT
 
 public:
+    /** @brief Creates a session for an accepted socket and shared command service. */
     RemoteSession(QTcpSocket* _socket, CommandService* _commandService, QObject* _parent = nullptr);
 
 private slots:
@@ -21,12 +23,12 @@ private slots:
     void onIdleTimeout();
 
 private:
-    void processPacket(const remote_control::Packet& _packet);
+    void processPacket(remote_control::Packet const& _packet);
     void restartIdleTimer();
 
-    QTcpSocket* m_socket = nullptr;
-    CommandService* m_commandService = nullptr;
-    QTimer* m_idleTimer = nullptr;
+    QTcpSocket* m_socket{nullptr};
+    CommandService* m_commandService{nullptr};
+    QTimer* m_idleTimer{nullptr};
     QByteArray m_buffer;
-    bool m_handled = false;
+    bool m_handled{false};
 };

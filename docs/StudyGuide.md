@@ -34,8 +34,9 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 
 - `QApplication` 如何启动事件循环
 - `QCommandLineParser` 如何定义参数
-- 客户端如何探测并启动本地服务端
+- 客户端如何解析服务端地址和端口参数
 - 服务端如何创建监听和系统托盘
+- `Run.ps1` 如何分别启动客户端、服务端和 smoke test
 
 ### 第二步：客户端界面
 

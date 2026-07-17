@@ -58,8 +58,11 @@ VS Code 会生成 `build/vscode-debug/compile_commands.json`，供 `clangd` 完�
 # 构建 Debug
 .\scripts\Build.ps1
 
-# 启动本地服务端和客户端
-.\scripts\Run.ps1 -Target stack -BuildDir .\build\vscode-debug
+# 终端 1：启动服务端
+.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
+
+# 终端 2：启动客户端
+.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
 
 # 运行无系统副作用的协议测试
 ctest --test-dir .\build\vscode-debug --output-on-failure -R RemoteControlProtocolTests
@@ -93,7 +96,7 @@ Qt Creator 通常会自动为 CMake target 创建运行配置。常用参数：
 
 ```text
 Program: powershell.exe
-Arguments: -ExecutionPolicy Bypass -File "%{sourceDir}/scripts/Run.ps1" -Target <client|server|stack|smoke> -BuildDir "%{buildDir}"
+Arguments: -ExecutionPolicy Bypass -File "%{sourceDir}/scripts/Run.ps1" -Target <client|server|smoke> -BuildDir "%{buildDir}"
 Working directory: %{sourceDir}
 ```
 
@@ -110,22 +113,17 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 - 地址：`127.0.0.1`
 - 端口：`9527`
 
-客户端默认会探测本地服务端；未检测到监听时，会尝试启动客户端同目录下的 `RemoteControlServer.exe`。
+客户端只负责连接指定服务端，不会启动或管理服务端进程。本地开发时，请在两个终端中分别启动服务端和客户端：
+
+```powershell
+.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
+```
 
 ## 文档
 
 - [构建与运行脚本](scripts/README.md)
 - [项目代码学习指南](docs/StudyGuide.md)
-
-## 代码命名规范
-
-- 类、结构体、枚举及枚举值：大驼峰
-- 函数和局部变量：小驼峰
-- 形参：`_` 加小驼峰，例如 `_serverHost`
-- 类的非静态成员：`m_` 加小驼峰，例如 `m_serverHost`
-- 类内部访问自身成员时显式使用 `this->`
-
-仓库根目录的 `.clang-tidy` 固化了上述命名规则。VS Code 使用 `build/vscode-debug/compile_commands.json` 运行静态分析。
 
 ## 安全提示
 

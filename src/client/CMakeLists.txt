@@ -9,7 +9,7 @@ add_executable(RemoteControlClient
 )
 
 target_include_directories(RemoteControlClient PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/client
+    ${PROJECT_SOURCE_DIR}/include
 )
 
 target_link_libraries(RemoteControlClient PRIVATE

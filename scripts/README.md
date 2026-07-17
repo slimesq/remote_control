@@ -68,23 +68,19 @@ build/vscode-release
 | --- | --- |
 | `client` | 运行远程控制客户端 |
 | `server` | 运行远程控制服务端 |
-| `stack` | 必要时启动服务端，等待端口就绪后启动客户端 |
 | `smoke` | 运行协议 smoke test |
 
 常用示例：
 
 ```powershell
-# 运行客户端
-.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
-
-# 运行服务端
+# 在终端 1 启动服务端
 .\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
 
-# 后台运行服务端
-.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug -NoTray
+# 在终端 2 启动客户端
+.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
 
-# 启动本地服务端和客户端
-.\scripts\Run.ps1 -Target stack -BuildDir .\build\vscode-debug -NoTray
+# 无托盘运行服务端
+.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug -NoTray
 
 # 运行 smoke test
 .\scripts\Run.ps1 -Target smoke -BuildDir .\build\vscode-debug
@@ -99,7 +95,6 @@ build/vscode-release
 | `-Port` | 服务端端口，默认为 `9527` |
 | `-NoTray` | 让服务端以无托盘模式运行 |
 | `-LockTestSeconds` | 服务端锁屏测试持续时间 |
-| `-StartupTimeoutSeconds` | `stack` 等待服务端启动的超时时间，默认为 8 秒 |
 
 ## VS Code 和 Qt Creator
 

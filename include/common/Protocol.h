@@ -6,9 +6,15 @@
 #include <QString>
 #include <QtGlobal>
 
-namespace remote_control {
+namespace remote_control
+{
 
-enum class Command : quint16 {
+/** @brief Default TCP port used by the client and server. */
+inline constexpr quint16 DefaultServerPort{9527};
+
+/** @brief Commands supported by the remote-control wire protocol. */
+enum class Command : quint16
+{
     ListDrives = 1,
     ListDirectory = 2,
     RunFile = 3,
@@ -21,14 +27,18 @@ enum class Command : quint16 {
     TestConnection = 1981,
 };
 
-enum class MouseAction : quint16 {
+/** @brief Mouse actions that can be forwarded to the remote host. */
+enum class MouseAction : quint16
+{
     Click = 0,
     DoubleClick = 1,
     Press = 2,
     Release = 3,
 };
 
-enum class MouseButton : quint16 {
+/** @brief Mouse buttons represented by a forwarded mouse event. */
+enum class MouseButton : quint16
+{
     Left = 0,
     Right = 1,
     Middle = 2,
@@ -36,31 +46,60 @@ enum class MouseButton : quint16 {
 };
 
 #pragma pack(push, 1)
-struct MouseEventPacket {
-    quint16 action = static_cast<quint16>(MouseAction::Click);
-    quint16 button = static_cast<quint16>(MouseButton::None);
-    qint32 x = 0;
-    qint32 y = 0;
+/** @brief Fixed-layout mouse event payload transferred over the wire. */
+struct MouseEventPacket
+{
+    /** @brief Encoded MouseAction value. */
+    quint16 action{static_cast<quint16>(MouseAction::Click)};
+
+    /** @brief Encoded MouseButton value. */
+    quint16 button{static_cast<quint16>(MouseButton::None)};
+
+    /** @brief Absolute remote screen x-coordinate. */
+    qint32 x{0};
+
+    /** @brief Absolute remote screen y-coordinate. */
+    qint32 y{0};
 };
 #pragma pack(pop)
 
-struct FileEntry {
-    bool isInvalid = false;
-    bool isDirectory = false;
-    bool hasNext = true;
+/** @brief Describes one entry in a streamed remote directory listing. */
+struct FileEntry
+{
+    /** @brief Whether the directory request or payload is invalid. */
+    bool isInvalid{false};
+
+    /** @brief Whether the entry represents a directory. */
+    bool isDirectory{false};
+
+    /** @brief Whether another entry packet follows this entry. */
+    bool hasNext{true};
+
+    /** @brief File or directory name without the parent path. */
     QString fileName;
 
-    QByteArray toPayload() const;
-    static FileEntry fromPayload(const QByteArray& _payload);
+    /** @brief Serializes this entry into its protocol payload. */
+    [[nodiscard]] QByteArray toPayload() const;
+
+    /** @brief Parses an entry from a protocol payload. */
+    [[nodiscard]] static FileEntry fromPayload(QByteArray const& _payload);
 };
 
-QByteArray makeStatusPayload(bool _success, const QString& _message = {});
-bool parseStatusPayload(const QByteArray& _payload, bool _defaultSuccess, QString* _messageOut = nullptr);
+/** @brief Creates the common success/failure response payload. */
+[[nodiscard]] QByteArray makeStatusPayload(bool _success, QString const& _message = {});
 
-QString decodeUtf8(const QByteArray& _data);
-QByteArray encodeUtf8(const QString& _text);
+/** @brief Parses a common success/failure response payload. */
+[[nodiscard]] bool parseStatusPayload(QByteArray const& _payload,
+                                      bool _defaultSuccess,
+                                      QString* _messageOut = nullptr);
 
-}
+/** @brief Decodes UTF-8 protocol bytes into a QString. */
+[[nodiscard]] QString decodeUtf8(QByteArray const& _data);
+
+/** @brief Encodes a QString as UTF-8 protocol bytes. */
+[[nodiscard]] QByteArray encodeUtf8(QString const& _text);
+
+}  // namespace remote_control
 
 Q_DECLARE_METATYPE(remote_control::Command)
 Q_DECLARE_METATYPE(remote_control::FileEntry)

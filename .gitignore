@@ -36,7 +36,10 @@ ui_*.h
 CMakeUserPresets.json
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/coding-style-review/
 
 # Binaries
 *.exe

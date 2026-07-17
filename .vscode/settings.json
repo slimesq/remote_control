@@ -8,5 +8,5 @@
         "--completion-style=detailed",
         "--header-insertion=iwyu"
     ],
-    "clangd.checkUpdates": true
+    "clangd.checkUpdates": false
 }

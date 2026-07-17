@@ -8,7 +8,7 @@ add_library(RemoteControlCommon STATIC
 )
 
 target_include_directories(RemoteControlCommon PUBLIC
-    ${PROJECT_SOURCE_DIR}/include/common
+    ${PROJECT_SOURCE_DIR}/include
 )
 
 target_link_libraries(RemoteControlCommon PUBLIC

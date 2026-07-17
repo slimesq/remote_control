@@ -9,7 +9,7 @@ add_executable(RemoteControlServer
 )
 
 target_include_directories(RemoteControlServer PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/server
+    ${PROJECT_SOURCE_DIR}/include
 )
 
 target_link_libraries(RemoteControlServer PRIVATE

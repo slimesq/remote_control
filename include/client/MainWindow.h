@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Protocol.h"
+#include "common/Protocol.h"
 
 #include <QMainWindow>
 #include <memory>
@@ -11,42 +11,50 @@ class QTreeWidgetItem;
 class RemoteClient;
 class WatchWindow;
 
-namespace Ui {
+namespace Ui
+{
 class MainWindow;
 }
 
+/** @brief Provides the main client window for connecting to and browsing a remote host. */
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
+    /** @brief Creates the main client window. */
     explicit MainWindow(QWidget* _parent = nullptr);
+
+    /** @brief Destroys the main client window. */
     ~MainWindow() override;
-    void setEndpoint(const QString& _host, quint16 _port);
+
+    /** @brief Updates the remote server endpoint displayed and used by the client. */
+    void setEndpoint(QString const& _host, quint16 _port);
 
 private:
-    QProgressDialog* ensureDownloadProgressDialog();
-    void setBusyState(bool _busy, const QString& _message = {});
+    [[nodiscard]] QProgressDialog* ensureDownloadProgressDialog();
+    void setBusyState(bool _busy, QString const& _message = {});
     void updateActionState();
     void clearRemoteView();
     void showWatchWindow();
-    QString currentSelectedFilePath() const;
-    QString currentSelectedFileName() const;
+    [[nodiscard]] QString currentSelectedFilePath() const;
+    [[nodiscard]] QString currentSelectedFileName() const;
     void openSelectedFile();
     void downloadSelectedFile();
     void deleteSelectedFile();
     void wireSignals();
     void requestSelectedDirectory(QTreeWidgetItem* _item);
-    void populateDriveTree(const QStringList& _drives);
-    void updateDirectoryView(const QString& _path, const QList<remote_control::FileEntry>& _entries);
-    QTreeWidgetItem* findItemByPath(const QString& _path) const;
-    static QString normalizeDrive(const QString& _drive);
-    static QString joinPath(const QString& _basePath, const QString& _fileName);
+    void populateDriveTree(QStringList const& _drives);
+    void updateDirectoryView(QString const& _path,
+                             QList<remote_control::FileEntry> const& _entries);
+    [[nodiscard]] QTreeWidgetItem* findItemByPath(QString const& _path) const;
+    [[nodiscard]] static QString normalizeDrive(QString const& _drive);
+    [[nodiscard]] static QString joinPath(QString const& _basePath, QString const& _fileName);
 
-    RemoteClient* m_client = nullptr;
-    WatchWindow* m_watchWindow = nullptr;
+    RemoteClient* m_client{nullptr};
+    WatchWindow* m_watchWindow{nullptr};
     std::unique_ptr<Ui::MainWindow> m_ui;
-    QProgressDialog* m_downloadProgress = nullptr;
-    bool m_connectionVerified = false;
-    bool m_busy = false;
+    QProgressDialog* m_downloadProgress{nullptr};
+    bool m_connectionVerified{false};
+    bool m_busy{false};
 };

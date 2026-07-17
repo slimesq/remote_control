@@ -5,21 +5,31 @@
 
 class QKeyEvent;
 
-namespace Ui {
+namespace Ui
+{
 class LockWindow;
 }
 
+/** @brief Provides the full-screen Windows lock overlay managed by the server. */
 class LockWindow : public QWidget
 {
     Q_OBJECT
 
 public:
+    /** @brief Creates a lock overlay. */
     explicit LockWindow(QWidget* _parent = nullptr);
+
+    /** @brief Restores system UI state before destroying the overlay. */
     ~LockWindow() override;
 
+    /** @brief Shows the lock overlay and hides supported Windows shell UI. */
     void lockMachine();
+
+    /** @brief Hides the lock overlay and restores supported Windows shell UI. */
     void unlockMachine();
-    bool isLocked() const;
+
+    /** @brief Returns whether the overlay is currently locked. */
+    [[nodiscard]] bool isLocked() const noexcept;
 
 protected:
     void closeEvent(QCloseEvent* _event) override;
@@ -27,8 +37,6 @@ protected:
     void keyPressEvent(QKeyEvent* _event) override;
 
 private:
-    void updateSystemUi(bool _locked);
-
     std::unique_ptr<Ui::LockWindow> m_ui;
-    bool m_locked = false;
+    bool m_locked{false};
 };
