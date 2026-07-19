@@ -90,7 +90,7 @@ std::optional<Packet> Packet::tryParse(QByteArray& _buffer)
     while (true)
     {
         // 1. Resynchronize the receive buffer to the next protocol header.
-        int const headerIndex{_buffer.indexOf(headerBytes)};
+        qsizetype const headerIndex{_buffer.indexOf(headerBytes)};
         if (headerIndex < 0)
         {
             // Preserve a trailing first-header byte because TCP may split FF FE between reads.

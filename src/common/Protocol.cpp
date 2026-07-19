@@ -77,7 +77,7 @@ FileEntry FileEntry::fromPayload(QByteArray const& _payload)
     stream >> flags;
     stream >> nameLength;
 
-    int const remainingBytes{_payload.size() - FileEntryHeaderSize};
+    qsizetype const remainingBytes{_payload.size() - FileEntryHeaderSize};
     if (stream.status() != QDataStream::Ok || version != FileEntryPayloadVersion ||
         (flags & static_cast<quint8>(~KnownFlags)) != 0 ||
         nameLength != static_cast<quint32>(remainingBytes))
