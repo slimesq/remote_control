@@ -45,15 +45,30 @@ private:
      */
     [[nodiscard]] QProgressDialog* ensureDownloadProgressDialog();
 
-    /**
-     * @brief Updates the busy state and status message.
-     * @param _busy Whether a blocking client operation is active.
-     * @param _message Status message to display.
-     */
-    void setBusyState(bool _busy, QString const& _message = {});
-
     /** @brief Enables actions that are valid for the current state. */
     void updateActionState();
+
+    /**
+     * @brief Updates the active download path and related action availability.
+     * @param _remotePath Remote path being downloaded, or empty to clear the active download.
+     */
+    void setActiveDownloadPath(QString const& _remotePath);
+
+    /**
+     * @brief Checks whether a download is active.
+     * @return true when an active download path is recorded; otherwise false.
+     */
+    [[nodiscard]] bool hasActiveDownload() const noexcept;
+
+    /**
+     * @brief Checks whether the specified remote file is being downloaded.
+     * @param _remotePath Remote file path to inspect.
+     * @return true when the file is the active download; otherwise false.
+     */
+    [[nodiscard]] bool isFileDownloading(QString const& _remotePath) const noexcept;
+
+    /** @brief Invalidates endpoint-specific state after host or port changes. */
+    void handleEndpointChanged();
 
     /** @brief Clears the displayed remote drives and files. */
     void clearRemoteView();
@@ -140,6 +155,9 @@ private:
     WatchWindow* m_watchWindow{nullptr};
     std::unique_ptr<Ui::MainWindow> m_ui;
     QProgressDialog* m_downloadProgress{nullptr};
+    QString m_activeDownloadPath;
     bool m_connectionVerified{false};
-    bool m_busy{false};
+    bool m_connectionTestPending{false};
+    bool m_driveListPending{false};
+    bool m_fileCommandPending{false};
 };

@@ -101,37 +101,59 @@ public:
 
 signals:
     /**
-     * @brief Reports the connection-test result.
+     * @brief Reports the final result of Command::TestConnection.
      * @param _success Whether the connection test succeeded.
      * @param _message User-facing result message.
      */
     void connectionTested(bool _success, QString const& _message);
 
     /**
-     * @brief Reports the available remote drives.
-     * @param _drives Remote drive identifiers.
-     */
-    void drivesListed(QStringList const& _drives);
-
-    /**
-     * @brief Reports a completed remote directory listing.
-     * @param _path Listed remote directory path.
-     * @param _entries Entries returned for the directory.
-     */
-    void directoryListed(QString const& _path, QList<remote_control::FileEntry> const& _entries);
-
-    /**
-     * @brief Reports a successfully completed command.
-     * @param _command Completed command.
-     * @param _context Command-specific path or label.
+     * @brief Reports the final result of Command::ListDrives.
+     * @param _drives Remote drive identifiers, or an empty list on failure.
+     * @param _success Whether the request succeeded.
      * @param _message User-facing result message.
      */
-    void commandCompleted(remote_control::Command _command,
-                          QString const& _context,
-                          QString const& _message);
+    void driveListFinished(QStringList const& _drives, bool _success, QString const& _message);
 
     /**
-     * @brief Reports received bytes for an active download.
+     * @brief Reports the final result of Command::ListDirectory.
+     * @param _path Listed remote directory path.
+     * @param _entries Entries returned for the directory, or an empty list on failure.
+     * @param _success Whether the request succeeded.
+     * @param _message User-facing result message.
+     */
+    void directoryListFinished(QString const& _path,
+                               QList<remote_control::FileEntry> const& _entries,
+                               bool _success,
+                               QString const& _message);
+
+    /**
+     * @brief Reports the final result of Command::RunFile or Command::DeleteFile.
+     * @param _command Completed file command.
+     * @param _path Remote file path associated with the command.
+     * @param _success Whether the command succeeded.
+     * @param _message User-facing result message.
+     */
+    void fileCommandFinished(remote_control::Command _command,
+                             QString const& _path,
+                             bool _success,
+                             QString const& _message);
+
+    /**
+     * @brief Reports the final result of Command::MouseEvent, Command::LockMachine, or
+     * Command::UnlockMachine.
+     * @param _command Completed control command.
+     * @param _context Command-specific label.
+     * @param _success Whether the command succeeded.
+     * @param _message User-facing result message.
+     */
+    void controlCommandFinished(remote_control::Command _command,
+                                QString const& _context,
+                                bool _success,
+                                QString const& _message);
+
+    /**
+     * @brief Reports received bytes for an active Command::DownloadFile request.
      * @param _remotePath Downloaded remote path.
      * @param _received Number of bytes received.
      * @param _total Expected total byte count.
@@ -139,7 +161,7 @@ signals:
     void downloadProgress(QString const& _remotePath, qint64 _received, qint64 _total);
 
     /**
-     * @brief Reports the final result of a download.
+     * @brief Reports the final result of Command::DownloadFile.
      * @param _remotePath Downloaded remote path.
      * @param _localPath Local destination path.
      * @param _success Whether the download succeeded.
@@ -151,20 +173,16 @@ signals:
                           QString const& _message);
 
     /**
-     * @brief Delivers a decoded remote screen frame.
+     * @brief Delivers a decoded frame returned by Command::WatchScreen.
      * @param _image Decoded remote screen image.
      */
     void watchFrameReady(QImage const& _image);
 
     /**
-     * @brief Reports a failed remote request.
-     * @param _command Failed command.
-     * @param _context Command-specific path or label.
+     * @brief Reports a connection or frame-request failure for Command::WatchScreen.
      * @param _message User-facing failure message.
      */
-    void requestFailed(remote_control::Command _command,
-                       QString const& _context,
-                       QString const& _message);
+    void watchFailed(QString const& _message);
 
 private:
     friend class PendingRequest;
@@ -185,7 +203,10 @@ private:
     QThread* m_downloadThread{nullptr};
     DownloadWorker* m_downloadWorker{nullptr};
     bool m_watchPending{false};
+    /** Generation used to discard asynchronous results from obsolete endpoints. */
     quint64 m_endpointGeneration{0};
+    /** Generation used to discard results from stopped monitor sessions. */
     quint64 m_watchGeneration{0};
+    /** Generation used to discard results from stopped control sessions. */
     quint64 m_controlGeneration{0};
 };
