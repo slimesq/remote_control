@@ -1,9 +1,14 @@
 function Resolve-QtRoot {
-    if ($env:QTDIR) {
-        if (Test-Path -LiteralPath (Join-Path $env:QTDIR "bin")) {
-            return (Resolve-Path -LiteralPath $env:QTDIR).Path
+    $configuredRoots = @(
+        $env:QTDIR
+        [Environment]::GetEnvironmentVariable("QTDIR", "User")
+        [Environment]::GetEnvironmentVariable("QTDIR", "Machine")
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($configuredRoot in $configuredRoots) {
+        if (Test-Path -LiteralPath (Join-Path $configuredRoot "bin")) {
+            return (Resolve-Path -LiteralPath $configuredRoot).Path
         }
-        throw "QTDIR does not point to a valid Qt kit: $env:QTDIR"
     }
 
     $searchRoots = @("C:\Qt", "D:\Qt", "D:\wsqAPP\QT", "D:\ProgramStudy\QT")
@@ -14,12 +19,55 @@ function Resolve-QtRoot {
                 ForEach-Object { Split-Path -Parent $_.Directory.FullName }
         }
     }
-    $kit = $kits | Where-Object { (Split-Path -Leaf $_) -match "^(msvc|mingw)" } | Sort-Object -Descending | Select-Object -First 1
-    if ($kit) {
-        return $kit
+
+    $kitCandidates = foreach ($kit in ($kits | Select-Object -Unique)) {
+        $kitName = Split-Path -Leaf $kit
+        if ($kitName -notmatch "^msvc") {
+            continue
+        }
+
+        $versionText = Split-Path -Leaf (Split-Path -Parent $kit)
+        $version = try { [version]$versionText } catch { [version]"0.0" }
+        $compilerYear = if ($kitName -match "msvc(\d{4})") { [int]$Matches[1] } else { 0 }
+        [pscustomobject]@{
+            Path = $kit
+            Version = $version
+            CompilerYear = $compilerYear
+        }
+    }
+    $selectedKit = $kitCandidates |
+        Sort-Object @{ Expression = "Version"; Descending = $true },
+                    @{ Expression = "CompilerYear"; Descending = $true },
+                    @{ Expression = "Path"; Descending = $true } |
+        Select-Object -First 1
+    if ($selectedKit) {
+        return $selectedKit.Path
     }
 
-    throw "Qt was not found. Set QTDIR to the Qt kit directory."
+    throw "An MSVC Qt kit was not found. Set QTDIR to the MSVC Qt kit directory."
+}
+
+function Resolve-NinjaExecutable {
+    param(
+        [Parameter(Mandatory)]
+        [string]$VisualStudioPath
+    )
+
+    if ($env:NINJA_EXE -and (Test-Path -LiteralPath $env:NINJA_EXE)) {
+        return (Resolve-Path -LiteralPath $env:NINJA_EXE).Path
+    }
+
+    $command = Get-Command ninja.exe -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $visualStudioNinja = Join-Path $VisualStudioPath "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
+    if (Test-Path -LiteralPath $visualStudioNinja) {
+        return (Resolve-Path -LiteralPath $visualStudioNinja).Path
+    }
+
+    throw "Ninja was not found. Install Ninja or set NINJA_EXE."
 }
 
 function Resolve-RemoteExecutable {
@@ -53,4 +101,18 @@ function Resolve-RemoteExecutable {
 function Enable-QtRuntime {
     $qtRoot = Resolve-QtRoot
     $env:PATH = "$(Join-Path $qtRoot 'bin');$env:PATH"
+}
+
+function Enable-QtRuntimeForExecutable {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ExecutablePath
+    )
+
+    $executableDirectory = Split-Path -Parent $ExecutablePath
+    $deployedQtCore = Get-ChildItem -LiteralPath $executableDirectory -Filter "Qt*Core*.dll" -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $deployedQtCore) {
+        Enable-QtRuntime
+    }
 }

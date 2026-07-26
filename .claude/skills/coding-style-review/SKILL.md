@@ -200,7 +200,7 @@ Configure and build with the MSVC environment:
 Run tests:
 
 ```powershell
-ctest --test-dir .\build\vscode-debug --output-on-failure
+ctest --test-dir .\build\msvc-debug --output-on-failure
 ```
 
 Run static analysis. Standalone LLVM 18 needs the same compatibility macro already supplied to
@@ -208,7 +208,7 @@ clangd by `.clangd` when used with the installed Visual Studio 2026 standard lib
 
 ```powershell
 $files = rg --files src -g '*.cpp'
-clang-tidy -p build/vscode-debug `
+clang-tidy -p build/msvc-debug `
     --extra-arg=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH `
     --quiet $files
 ```

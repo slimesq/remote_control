@@ -1,9 +1,9 @@
-﻿<#
+<#
 .SYNOPSIS
 配置、构建或清理项目。
 
 .DESCRIPTION
-自动查找 Qt、MSVC、CMake 和 Ninja，使用 build/vscode-<config> 作为构建目录。
+自动查找 Qt、MSVC、CMake 和 Ninja，并调用 CMakePresets.json 中的 MSVC 构建预设。
 构建完成后自动执行 windeployqt，并生成供 clangd 使用的 compile_commands.json。
 
 .PARAMETER Action
@@ -12,8 +12,20 @@ configure：仅生成构建系统；build：配置并构建；clean：删除对�
 .PARAMETER Config
 选择 Debug 或 Release，默认为 Debug。
 
+.PARAMETER Target
+选择构建全部目标、客户端、服务端或测试程序，默认为 all。
+
+.PARAMETER RefreshPresets
+强制重新检测本机工具链并生成 CMakeUserPresets.json。
+
+.PARAMETER Deploy
+即使运行库已经存在，也强制重新执行 windeployqt。
+
 .EXAMPLE
 .\scripts\Build.ps1
+
+.EXAMPLE
+.\scripts\Build.ps1 -Target client
 
 .EXAMPLE
 .\scripts\Build.ps1 -Action clean -Config Debug
@@ -22,29 +34,24 @@ param(
     [ValidateSet("configure", "build", "clean")]
     [string]$Action = "build",
     [ValidateSet("Debug", "Release")]
-    [string]$Config = "Debug"
+    [string]$Config = "Debug",
+    [ValidateSet("all", "client", "server", "tests")]
+    [string]$Target = "all",
+    [switch]$RefreshPresets,
+    [switch]$Deploy
 )
 
 $ErrorActionPreference = "Stop"
 
 $workspace = Split-Path -Parent $PSScriptRoot
-$buildDir = Join-Path $workspace ("build\vscode-" + $Config.ToLowerInvariant())
-$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-. (Join-Path $PSScriptRoot "internal\Common.ps1")
-$qtRoot = Resolve-QtRoot
-
-if (-not (Test-Path -LiteralPath $vswhere)) {
-    throw "vswhere.exe not found. Please install Visual Studio Build Tools with C++ support."
+$buildDir = Join-Path $workspace ("build\msvc-" + $Config.ToLowerInvariant())
+$configurePreset = "local-msvc-" + $Config.ToLowerInvariant()
+$buildPreset = $configurePreset
+if ($Target -ne "all") {
+    $buildPreset += "-$Target"
 }
-
-$vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vsPath) {
-    throw "MSVC Build Tools not found."
-}
-
-$devCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
-$ninja = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
-$cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+$userPresetsPath = Join-Path $workspace "CMakeUserPresets.json"
+$cachePath = Join-Path $buildDir "CMakeCache.txt"
 
 if ($Action -eq "clean") {
     if (Test-Path -LiteralPath $buildDir) {
@@ -53,23 +60,94 @@ if ($Action -eq "clean") {
     exit 0
 }
 
-$configureArgs = 'call "{0}" -arch=amd64 && "{1}" -S "{2}" -B "{3}" -G Ninja -DCMAKE_BUILD_TYPE={4} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_PREFIX_PATH="{5}" -DCMAKE_MAKE_PROGRAM="{6}"' -f $devCmd, $cmake, $workspace, $buildDir, $Config, $qtRoot, $ninja
-& cmd.exe /d /s /c $configureArgs
-if ($LASTEXITCODE -ne 0 -or $Action -eq "configure") {
-    exit $LASTEXITCODE
+function Test-LocalPresets {
+    if (-not (Test-Path -LiteralPath $userPresetsPath)) {
+        return $false
+    }
+
+    try {
+        $document = Get-Content -LiteralPath $userPresetsPath -Raw -Encoding utf8 | ConvertFrom-Json
+    } catch {
+        return $false
+    }
+
+    $environmentPreset = $document.configurePresets | Where-Object Name -eq "local-msvc-environment"
+    $buildPresetExists = $document.buildPresets | Where-Object Name -eq $buildPreset
+    if (-not $environmentPreset -or -not $buildPresetExists) {
+        return $false
+    }
+
+    $environment = $environmentPreset.environment
+    if (-not $environment.QTDIR -or -not $environment.NINJA_EXE -or
+        -not $environment.VCToolsInstallDir -or -not $environment.WindowsSdkDir) {
+        return $false
+    }
+
+    return (Test-Path -LiteralPath (Join-Path $environment.QTDIR "bin")) -and
+        (Test-Path -LiteralPath $environment.NINJA_EXE) -and
+        (Test-Path -LiteralPath $environment.VCToolsInstallDir) -and
+        (Test-Path -LiteralPath $environment.WindowsSdkDir)
 }
 
-$buildArgs = 'call "{0}" -arch=amd64 && "{1}" --build "{2}" --parallel' -f $devCmd, $cmake, $buildDir
-& cmd.exe /d /s /c $buildArgs
+$presetsRefreshed = $RefreshPresets -or -not (Test-LocalPresets)
+if ($presetsRefreshed) {
+    & (Join-Path $PSScriptRoot "Setup-CMakeUserPresets.ps1")
+}
+
+$cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+
+function Sync-CompileCommands {
+    $compileCommands = Join-Path $buildDir "compile_commands.json"
+    if (Test-Path -LiteralPath $compileCommands) {
+        Copy-Item -LiteralPath $compileCommands -Destination (Join-Path $workspace "compile_commands.json") -Force
+    }
+}
+
+$shouldConfigure = $Action -eq "configure" -or $presetsRefreshed -or -not (Test-Path -LiteralPath $cachePath)
+if ($shouldConfigure) {
+    & $cmake --preset $configurePreset
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+    Sync-CompileCommands
+}
+
+if ($Action -eq "configure") {
+    exit 0
+}
+
+& $cmake --build --preset $buildPreset
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
+Sync-CompileCommands
 
-$deployTool = Join-Path $qtRoot "bin\windeployqt.exe"
-$deployTargets = @("RemoteControlClient.exe", "RemoteControlServer.exe", "RemoteControlSmokeTest.exe", "RemoteControlProtocolTests.exe")
-foreach ($executable in Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -Recurse -File | Where-Object Name -In $deployTargets) {
-    & $deployTool --no-translations --no-compiler-runtime $executable.FullName
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+$binDir = Join-Path $buildDir "bin"
+$debugSuffix = if ($Config -eq "Debug") { "d" } else { "" }
+$requiredQtModule = if ($Target -eq "tests") { "Core" } else { "Widgets" }
+$requiredQtRuntime = Get-ChildItem -LiteralPath $binDir -Filter "Qt*$requiredQtModule$debugSuffix.dll" -File -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+$shouldDeploy = $Deploy -or $presetsRefreshed -or -not $requiredQtRuntime
+if ($shouldDeploy) {
+    if (-not $presetsRefreshed) {
+        & (Join-Path $PSScriptRoot "Setup-CMakeUserPresets.ps1")
+    }
+
+    . (Join-Path $PSScriptRoot "internal\Common.ps1")
+    $qtRoot = Resolve-QtRoot
+    $deployTool = Join-Path $qtRoot "bin\windeployqt.exe"
+    if (-not (Test-Path -LiteralPath $deployTool)) {
+        throw "windeployqt.exe was not found: $deployTool"
+    }
+
+    $deployTargets = @("RemoteControlClient.exe", "RemoteControlServer.exe", "RemoteControlSmokeTest.exe", "RemoteControlProtocolTests.exe")
+    $executables = @(Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -Recurse -File | Where-Object Name -In $deployTargets)
+    $deployArguments = @("--no-translations", "--compiler-runtime", "--no-system-dxc-compiler")
+    $deployArguments += @($executables | Select-Object -ExpandProperty FullName)
+    if ($executables.Count -gt 0) {
+        & $deployTool @deployArguments
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
     }
 }

@@ -1,11 +1,26 @@
-file(GLOB_RECURSE REMOTE_CONTROL_SERVER_SOURCES CONFIGURE_DEPENDS
-    ${PROJECT_SOURCE_DIR}/src/server/*.cpp
-    ${PROJECT_SOURCE_DIR}/src/server/*.ui
-    ${PROJECT_SOURCE_DIR}/include/server/*.h
-)
-
 add_executable(RemoteControlServer
-    ${REMOTE_CONTROL_SERVER_SOURCES}
+    CommandService.cpp
+    ControlStreamThread.cpp
+    FileRequestPool.cpp
+    FileRequestWorker.cpp
+    LockWindow.cpp
+    LockWindow.ui
+    PlatformIntegration.cpp
+    RemoteServer.cpp
+    RemoteSession.cpp
+    ServerMain.cpp
+    ServerTrayController.cpp
+    WatchStreamThread.cpp
+    ${PROJECT_SOURCE_DIR}/include/server/CommandService.h
+    ${PROJECT_SOURCE_DIR}/include/server/ControlStreamThread.h
+    ${PROJECT_SOURCE_DIR}/include/server/FileRequestPool.h
+    ${PROJECT_SOURCE_DIR}/include/server/FileRequestWorker.h
+    ${PROJECT_SOURCE_DIR}/include/server/LockWindow.h
+    ${PROJECT_SOURCE_DIR}/include/server/PlatformIntegration.h
+    ${PROJECT_SOURCE_DIR}/include/server/RemoteServer.h
+    ${PROJECT_SOURCE_DIR}/include/server/RemoteSession.h
+    ${PROJECT_SOURCE_DIR}/include/server/ServerTrayController.h
+    ${PROJECT_SOURCE_DIR}/include/server/WatchStreamThread.h
 )
 
 target_include_directories(RemoteControlServer PRIVATE

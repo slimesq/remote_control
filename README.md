@@ -35,7 +35,7 @@ scripts/          构建与运行入口
 ## 环境要求
 
 - Windows
-- CMake 3.21 或更高版本
+- CMake 3.25 或更高版本
 - C++17
 - Visual Studio Build Tools/MSVC
 - Qt 5.15 或 Qt 6，包含 Core、Gui、Widgets、Network
@@ -46,11 +46,11 @@ scripts/          构建与运行入口
 ### VS Code
 
 1. 用 VS Code 打开仓库目录。
-2. 安装工作区推荐的 `clangd` 和 Microsoft C++ 扩展。
-3. 按 `Ctrl+Shift+B` 构建 Debug。
+2. 安装工作区推荐的 CMake、C++、clangd 和 Qt 扩展。
+3. 按 `Ctrl+Shift+B` 执行 Debug 增量构建。
 4. 按 `F5`，选择客户端、服务端或 smoke test。
 
-VS Code 会生成 `build/vscode-debug/compile_commands.json`，供 `clangd` 完成跳转和索引。
+构建脚本和 CMake Tools 都会把当前配置的 `compile_commands.json` 同步到项目根目录，供 `clangd` 完成跳转和索引。
 
 ### PowerShell
 
@@ -59,13 +59,13 @@ VS Code 会生成 `build/vscode-debug/compile_commands.json`，供 `clangd` 完�
 .\scripts\Build.ps1
 
 # 终端 1：启动服务端
-.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug
 
 # 终端 2：启动客户端
-.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
 
 # 运行无系统副作用的协议测试
-ctest --test-dir .\build\vscode-debug --output-on-failure -R RemoteControlProtocolTests
+ctest --test-dir .\build\msvc-debug --output-on-failure -R RemoteControlProtocolTests
 ```
 
 更多参数参见 [脚本说明](scripts/README.md)。
@@ -116,8 +116,8 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 客户端只负责连接指定服务端，不会启动或管理服务端进程。本地开发时，请在两个终端中分别启动服务端和客户端：
 
 ```powershell
-.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
-.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug
+.\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
 ```
 
 ## 文档

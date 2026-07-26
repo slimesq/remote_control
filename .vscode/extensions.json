@@ -1,6 +1,9 @@
 {
     "recommendations": [
         "ms-vscode.cpptools",
-        "llvm-vs-code-extensions.vscode-clangd"
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "theqtcompany.qt-core",
+        "theqtcompany.qt-ui"
     ]
 }

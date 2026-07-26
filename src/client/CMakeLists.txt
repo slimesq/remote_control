@@ -1,11 +1,19 @@
-file(GLOB_RECURSE REMOTE_CONTROL_CLIENT_SOURCES CONFIGURE_DEPENDS
-    ${PROJECT_SOURCE_DIR}/src/client/*.cpp
-    ${PROJECT_SOURCE_DIR}/src/client/*.ui
-    ${PROJECT_SOURCE_DIR}/include/client/*.h
-)
-
 add_executable(RemoteControlClient
-    ${REMOTE_CONTROL_CLIENT_SOURCES}
+    ClientMain.cpp
+    ControlConnectionWorker.cpp
+    DownloadWorker.cpp
+    MainWindow.cpp
+    MainWindow.ui
+    RemoteClient.cpp
+    WatchConnectionWorker.cpp
+    WatchWindow.cpp
+    WatchWindow.ui
+    ${PROJECT_SOURCE_DIR}/include/client/ControlConnectionWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/DownloadWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/MainWindow.h
+    ${PROJECT_SOURCE_DIR}/include/client/RemoteClient.h
+    ${PROJECT_SOURCE_DIR}/include/client/WatchConnectionWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/WatchWindow.h
 )
 
 target_include_directories(RemoteControlClient PRIVATE

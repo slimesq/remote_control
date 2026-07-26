@@ -172,7 +172,7 @@ RemoteServer 接受连接
 ## 5. 调试建议
 
 - 客户端和服务端分别启动调试时，确认端口一致。
-- 遇到 Qt 类型跳转失败，先确认 `build/vscode-debug/compile_commands.json` 存在，再重启 `clangd`。
+- 遇到 Qt 类型跳转失败，先确认 `build/msvc-debug/compile_commands.json` 存在，再重启 `clangd`。
 - 遇到 `ui_*.h` 缺失，先完成一次构建；这些头文件由 `AUTOUIC` 生成。
 - 修改 `Q_OBJECT` 类后出现链接错误时，检查头文件是否包含在 CMake target 中，并重新运行 configure。
 - 协议修改后优先运行 `RemoteControlSmokeTest`，避免只验证界面路径。

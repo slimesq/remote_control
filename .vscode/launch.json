@@ -5,26 +5,26 @@
             "name": "Debug Remote Server",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\build\\vscode-debug\\bin\\RemoteControlServer.exe",
+            "program": "${workspaceFolder}\\build\\msvc-debug\\bin\\RemoteControlServer.exe",
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "CMake: Build Debug"
+            "preLaunchTask": "CMake: Build Debug Server"
         },
         {
             "name": "Debug Remote Client",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\build\\vscode-debug\\bin\\RemoteControlClient.exe",
+            "program": "${workspaceFolder}\\build\\msvc-debug\\bin\\RemoteControlClient.exe",
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "CMake: Build Debug"
+            "preLaunchTask": "CMake: Build Debug Client"
         },
         {
             "name": "Debug Smoke Test",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\build\\vscode-debug\\bin\\RemoteControlSmokeTest.exe",
+            "program": "${workspaceFolder}\\build\\msvc-debug\\bin\\RemoteControlSmokeTest.exe",
             "args": ["127.0.0.1", "9527"],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "CMake: Build Debug"
+            "preLaunchTask": "CMake: Build Debug Tests"
         }
     ]
 }

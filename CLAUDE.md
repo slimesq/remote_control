@@ -11,8 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Commands
 
 ```powershell
-# Build Debug (configure + build + windeployqt)
+# Incremental Debug build (configures and deploys when needed)
 .\scripts\Build.ps1
+
+# Build only one target group
+.\scripts\Build.ps1 -Target client
+.\scripts\Build.ps1 -Target server
+.\scripts\Build.ps1 -Target tests
 
 # Build Release
 .\scripts\Build.ps1 -Action build -Config Release
@@ -22,30 +27,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Clean
 .\scripts\Build.ps1 -Action clean -Config Debug
+
+# Refresh local toolchain presets or force runtime deployment
+.\scripts\Build.ps1 -RefreshPresets
+.\scripts\Build.ps1 -Deploy
 ```
 
 ```powershell
 # Run server (default 127.0.0.1:9527)
-.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug
 
 # Run client
-.\scripts\Run.ps1 -Target client -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
 
 # Run smoke test (requires running server)
-.\scripts\Run.ps1 -Target smoke -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target smoke -BuildDir .\build\msvc-debug
 
 # Server without tray icon
-.\scripts\Run.ps1 -Target server -BuildDir .\build\vscode-debug -NoTray
+.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug -NoTray
 ```
 
 ### Tests
 
 ```powershell
 # Unit tests (pure protocol tests, no server needed — registered with CTest)
-ctest --test-dir .\build\vscode-debug --output-on-failure -R RemoteControlProtocolTests
+ctest --test-dir .\build\msvc-debug --output-on-failure -R RemoteControlProtocolTests
 
 # Integration test (requires running server at 127.0.0.1:9527)
-.\scripts\Run.ps1 -Target smoke -BuildDir .\build\vscode-debug
+.\scripts\Run.ps1 -Target smoke -BuildDir .\build\msvc-debug
 ```
 
 ### Static Analysis
@@ -55,7 +64,7 @@ ctest --test-dir .\build\vscode-debug --output-on-failure -R RemoteControlProtoc
 clang-format --dry-run --Werror --style=file <changed-files>
 
 # clang-tidy (run from repo root; needs compile_commands.json from a prior build)
-clang-tidy -p build/vscode-debug --extra-arg=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH --quiet <changed-cpp-files>
+clang-tidy -p build/msvc-debug --extra-arg=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH --quiet <changed-cpp-files>
 ```
 
 ## Architecture

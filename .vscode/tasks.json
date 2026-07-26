@@ -2,11 +2,46 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "CMake: Setup Local Presets",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Setup-CMakeUserPresets.ps1"],
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Configure Debug",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "configure", "-Config", "Debug"],
+            "problemMatcher": "$msCompile"
+        },
+        {
             "label": "CMake: Build Debug",
             "type": "shell",
             "command": "powershell.exe",
             "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "build", "-Config", "Debug"],
             "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Build Debug Client",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "build", "-Config", "Debug", "-Target", "client"],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Build Debug Server",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "build", "-Config", "Debug", "-Target", "server"],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Build Debug Tests",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "build", "-Config", "Debug", "-Target", "tests"],
             "problemMatcher": "$msCompile"
         },
         {
@@ -21,6 +56,15 @@
             "type": "shell",
             "command": "powershell.exe",
             "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\scripts\\Build.ps1", "-Action", "clean", "-Config", "Debug"],
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Test Debug",
+            "type": "shell",
+            "command": "ctest.exe",
+            "args": ["--preset", "local-msvc-debug"],
+            "dependsOn": "CMake: Build Debug Tests",
+            "dependsOrder": "sequence",
             "problemMatcher": []
         }
     ]

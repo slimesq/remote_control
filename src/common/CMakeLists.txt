@@ -1,10 +1,8 @@
-file(GLOB_RECURSE REMOTE_CONTROL_COMMON_SOURCES CONFIGURE_DEPENDS
-    ${PROJECT_SOURCE_DIR}/src/common/*.cpp
-    ${PROJECT_SOURCE_DIR}/include/common/*.h
-)
-
 add_library(RemoteControlCommon STATIC
-    ${REMOTE_CONTROL_COMMON_SOURCES}
+    Packet.cpp
+    Protocol.cpp
+    ${PROJECT_SOURCE_DIR}/include/common/Packet.h
+    ${PROJECT_SOURCE_DIR}/include/common/Protocol.h
 )
 
 target_include_directories(RemoteControlCommon PUBLIC

@@ -1,7 +1,10 @@
 {
     "C_Cpp.intelliSenseEngine": "disabled",
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": false,
+    "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/build/vscode-debug",
+        "--compile-commands-dir=${workspaceFolder}",
         "--enable-config",
         "--background-index",
         "--clang-tidy",

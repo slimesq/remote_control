@@ -1,0 +1,177 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "msvc-ninja",
+            "hidden": true,
+            "generator": "Ninja",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": {
+                    "type": "BOOL",
+                    "value": true
+                },
+                "CMAKE_PREFIX_PATH": {
+                    "type": "PATH",
+                    "value": "$env{QTDIR}"
+                },
+                "CMAKE_MAKE_PROGRAM": {
+                    "type": "FILEPATH",
+                    "value": "$env{NINJA_EXE}"
+                }
+            }
+        },
+        {
+            "name": "msvc-debug",
+            "displayName": "MSVC Debug (Ninja)",
+            "description": "Configure a Debug build with the MSVC x64 toolchain and Ninja.",
+            "inherits": "msvc-ninja",
+            "binaryDir": "${sourceDir}/build/msvc-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "msvc-release",
+            "displayName": "MSVC Release (Ninja)",
+            "description": "Configure a Release build with the MSVC x64 toolchain and Ninja.",
+            "inherits": "msvc-ninja",
+            "binaryDir": "${sourceDir}/build/msvc-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "msvc-debug",
+            "displayName": "Build MSVC Debug",
+            "configurePreset": "msvc-debug",
+            "jobs": 0
+        },
+        {
+            "name": "msvc-release",
+            "displayName": "Build MSVC Release",
+            "configurePreset": "msvc-release",
+            "jobs": 0
+        },
+        {
+            "name": "msvc-debug-client",
+            "displayName": "Build Client (Debug)",
+            "inherits": "msvc-debug",
+            "targets": [
+                "RemoteControlClient"
+            ]
+        },
+        {
+            "name": "msvc-debug-server",
+            "displayName": "Build Server (Debug)",
+            "inherits": "msvc-debug",
+            "targets": [
+                "RemoteControlServer"
+            ]
+        },
+        {
+            "name": "msvc-debug-tests",
+            "displayName": "Build Tests (Debug)",
+            "inherits": "msvc-debug",
+            "targets": [
+                "RemoteControlProtocolTests",
+                "RemoteControlSmokeTest"
+            ]
+        },
+        {
+            "name": "msvc-release-client",
+            "displayName": "Build Client (Release)",
+            "inherits": "msvc-release",
+            "targets": [
+                "RemoteControlClient"
+            ]
+        },
+        {
+            "name": "msvc-release-server",
+            "displayName": "Build Server (Release)",
+            "inherits": "msvc-release",
+            "targets": [
+                "RemoteControlServer"
+            ]
+        },
+        {
+            "name": "msvc-release-tests",
+            "displayName": "Build Tests (Release)",
+            "inherits": "msvc-release",
+            "targets": [
+                "RemoteControlProtocolTests",
+                "RemoteControlSmokeTest"
+            ]
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "msvc-debug",
+            "displayName": "Test MSVC Debug",
+            "configurePreset": "msvc-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "msvc-release",
+            "displayName": "Test MSVC Release",
+            "configurePreset": "msvc-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "msvc-debug",
+            "displayName": "Configure, Build and Test Debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "msvc-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "msvc-debug"
+                },
+                {
+                    "type": "test",
+                    "name": "msvc-debug"
+                }
+            ]
+        },
+        {
+            "name": "msvc-release",
+            "displayName": "Configure, Build and Test Release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "msvc-release"
+                },
+                {
+                    "type": "build",
+                    "name": "msvc-release"
+                },
+                {
+                    "type": "test",
+                    "name": "msvc-release"
+                }
+            ]
+        }
+    ]
+}

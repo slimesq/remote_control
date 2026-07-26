@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.25)
 
 project(RemoteControl LANGUAGES CXX)
 
@@ -20,7 +20,11 @@ if(QT_VERSION_MAJOR EQUAL 6)
     qt_standard_project_setup()
 endif()
 
+add_subdirectory(include)
 add_subdirectory(src/common)
 add_subdirectory(src/client)
 add_subdirectory(src/server)
-add_subdirectory(src/tests)
+
+if(BUILD_TESTING)
+    add_subdirectory(src/tests)
+endif()
