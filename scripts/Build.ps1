@@ -4,10 +4,10 @@
 
 .DESCRIPTION
 自动查找 Qt、MSVC、CMake 和 Ninja，并调用 CMakePresets.json 中的 MSVC 构建预设。
-构建完成后自动执行 windeployqt，并生成供 clangd 使用的 compile_commands.json。
+构建完成后按需执行 windeployqt，并生成供 clangd 使用的 compile_commands.json。
 
 .PARAMETER Action
-configure：仅生成构建系统；build：配置并构建；clean：删除对应构建目录。
+configure：仅生成构建系统；build：在需要时先配置再构建；clean：删除对应构建目录。
 
 .PARAMETER Config
 选择 Debug 或 Release，默认为 Debug。

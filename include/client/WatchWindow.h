@@ -103,7 +103,7 @@ private:
 
     QImage m_image;
     QTimer* m_moveEventTimer{nullptr};
-    remote_control::MouseEventPacket m_pendingMoveEvent{};
+    remote_control::MouseEventPacket m_pendingMoveEvent;
     bool m_hasPendingMoveEvent{false};
 };
 

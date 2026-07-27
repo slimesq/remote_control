@@ -17,6 +17,12 @@ constexpr int RequestInactivityTimeoutMs{15000};
 
 }  // namespace
 
+/**
+ * @brief Executes one asynchronous short-lived request over a dedicated TCP connection.
+ *
+ * The request sends one protocol command, collects its single-packet or multi-packet response,
+ * reports the result through its owning RemoteClient, and then releases itself.
+ */
 class PendingRequest final : public QObject
 {
     Q_DECLARE_TR_FUNCTIONS(PendingRequest)
@@ -394,20 +400,21 @@ private:
         this->requestDeletion();
     }
 
-    RemoteClient* m_client{nullptr};
-    QString m_host;
-    quint16 m_port{0};
-    quint64 m_generation{0};
-    remote_control::Command m_command;
-    QByteArray m_payload;
-    QString m_context;
-    QTcpSocket m_socket;
-    QTimer* m_timeoutTimer{nullptr};
-    QByteArray m_buffer;
-    QList<remote_control::FileEntry> m_entries;
-    bool m_finished{false};
-    int m_callbackDepth{0};
-    bool m_cleanupPending{false};
+    RemoteClient* m_client{nullptr};  ///< Receives the completed request result.
+    QString m_host;                   ///< Server host name or address.
+    quint16 m_port{0};                ///< Server TCP port.
+    quint64 m_generation{0};          ///< Endpoint generation captured at request start.
+    remote_control::Command m_command{
+        remote_control::Command::TestConnection};  ///< Command sent by this request.
+    QByteArray m_payload;                          ///< Command-specific payload.
+    QString m_context;                             ///< Result path or label.
+    QTcpSocket m_socket;                           ///< Socket dedicated to this request.
+    QTimer* m_timeoutTimer{nullptr};               ///< Detects request inactivity.
+    QByteArray m_buffer;                           ///< Unparsed received bytes.
+    QList<remote_control::FileEntry> m_entries;    ///< Accumulated directory entries.
+    bool m_finished{false};                        ///< Whether the request has finished.
+    int m_callbackDepth{0};                        ///< Number of active nested callbacks.
+    bool m_cleanupPending{false};                  ///< Whether cleanup must be deferred.
 };
 
 RemoteClient::RemoteClient(QObject* _parent)

@@ -20,16 +20,16 @@
 namespace
 {
 
-/** Stores the complete remote path associated with a directory-tree item. */
+/** @brief Stores the complete remote path associated with a directory-tree item. */
 constexpr int PathRole{Qt::UserRole};
 
-/** Stores the current directory loading state. */
+/** @brief Stores the current directory loading state. */
 constexpr int DirectoryStateRole{Qt::UserRole + 1};
 
-/** Stores the directory entries cached for a directory-tree item. */
+/** @brief Stores the directory entries cached for a directory-tree item. */
 constexpr int DirectoryEntriesRole{Qt::UserRole + 2};
 
-/** Represents the valid loading states of a remote directory item. */
+/** @brief Represents the valid loading states of a remote directory item. */
 enum class DirectoryLoadState
 {
     Unloaded,    ///< No directory entries have been cached.

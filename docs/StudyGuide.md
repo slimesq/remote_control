@@ -4,7 +4,7 @@
 
 ## 1. 先看整体架构
 
-项目分为三个应用层模块和一个公共模块：
+项目包含客户端、服务端、测试程序和一个公共协议库：
 
 ```text
 RemoteControlClient
@@ -13,7 +13,8 @@ RemoteControlClient
     ├─ 控制长连接 ─► ControlStreamThread ─► 鼠标/锁定/解锁
     └─ 监控长连接 ─► WatchStreamThread ─► 截图
 
-RemoteControlSmokeTest ──► 使用相同协议验证服务端
+RemoteControlProtocolTests ──► 独立验证 Packet 和 Protocol
+RemoteControlSmokeTest ──────► 使用相同协议端到端验证服务端
 ```
 
 | 目录 | 作用 |
@@ -21,7 +22,7 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 | `src/common`、`include/common` | 命令、数据结构和 Packet 编解码 |
 | `src/client`、`include/client` | 界面、网络请求和远程屏幕交互 |
 | `src/server`、`include/server` | TCP 监听、会话管理和命令执行 |
-| `src/tests` | 端到端 smoke test |
+| `src/tests` | 协议测试与端到端 smoke test |
 
 ## 2. 推荐阅读顺序
 
@@ -46,18 +47,31 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
 
 建议重点阅读：
 
-- `setupUi()`：加载 Qt Designer 生成的界面
+- `setupUi()`：调用 `uic` 生成的代码，创建并配置 Qt Designer 中定义的控件
 - `wireSignals()`：建立控件与业务逻辑之间的信号槽连接
 - `populateDriveTree()`、`updateDirectoryView()`：更新树和文件表格
-- `setBusyState()`、`updateActionState()`：维护界面状态
+- `updateActionState()`：根据连接、选择和异步请求状态更新控件可用性
+- `m_connectionTestPending`、`m_driveListPending`、`m_fileCommandPending`：阻止同类请求重复提交
+- `m_activeDownloadPath`：同时表示活动下载状态和正在下载的远程路径
+- `DirectoryLoadState`、`DirectoryEntriesRole`：维护目录加载状态和缓存
+
+目录状态转换：
+
+```text
+首次加载：Unloaded → Loading → Loaded
+                         └─失败→ Unloaded
+
+强制刷新：Loaded → Refreshing → Loaded
+                         └─失败→ Loaded（保留旧缓存）
+```
 
 ### 第三步：客户端网络层
 
 - [RemoteClient.h](../include/client/RemoteClient.h)
 - [RemoteClient.cpp](../src/client/RemoteClient.cpp)
-- [ControlConnectionWorker.cpp](../src/client/ControlConnectionWorker.cpp)
 - [DownloadWorker.cpp](../src/client/DownloadWorker.cpp)
 - [WatchConnectionWorker.cpp](../src/client/WatchConnectionWorker.cpp)
+- [ControlConnectionWorker.cpp](../src/client/ControlConnectionWorker.cpp)
 
 普通轻量命令使用短连接：
 
@@ -70,7 +84,26 @@ RemoteControlSmokeTest ──► 使用相同协议验证服务端
   → MainWindow 更新界面
 ```
 
-可以先跟踪 `testConnection()`，它的数据最少、调用链最短。
+可以先跟踪 `testConnection()`，它的数据最少、调用链最短。`PendingRequest` 属于
+`RemoteClient` 所在的 GUI 线程，但 `QTcpSocket` 使用事件循环异步收发，因此不会同步阻塞
+界面。每个 `PendingRequest` 实例只处理一次逻辑请求；目录列表虽然可能返回多个数据包，
+仍然属于同一次请求。
+
+`requestDrives()`、`requestDirectory()`、`runFile()` 和 `deleteFile()` 复用同一个 `PendingRequest` 模型。其中目录请求的服务端响应由多个 `FileEntry` 包和一个 `hasNext == false` 的终止包组成。
+
+`PendingRequest::onReadyRead()` 将 `QTcpSocket::readAll()` 返回的新数据追加到持久缓冲区，
+再循环调用 `Packet::tryParse()`。完整数据包会立即分派处理；不完整数据会留在缓冲区，
+等待下一次 `readyRead()`，从而同时处理 TCP 拆包、粘包和目录多包响应。每次连接成功或
+收到新数据都会重新启动 15 秒无活动超时，请求完成时停止计时器。
+
+三个 generation 分别管理不同范围的过期结果：
+
+- `m_endpointGeneration`：地址或端口变化后，丢弃旧 endpoint 的一次性请求结果。
+- `m_watchGeneration`：停止监控后，丢弃旧监控会话返回的帧、错误和完成通知。
+- `m_controlGeneration`：停止控制后，丢弃旧控制会话返回的命令结果。
+
+它们不会互相比较。endpoint 改变时，`setEndpoint()` 会分别让一次性请求、监控会话和
+控制会话失效。
 
 远程屏幕使用独立工作线程和持久连接：
 
@@ -83,8 +116,15 @@ WatchWindow 定时请求下一帧
 ```
 
 同一时刻只允许一帧处于请求中，上一帧完成后才会发送下一帧，避免慢网络下积压请求。
+`m_watchPending` 只表示当前是否有一帧正在等待结果，不表示监控窗口或长连接是否开启；
+一帧成功、失败或超时后会恢复为 `false`，关闭监控时也会立即清除。
 
-鼠标、锁定和解锁使用单独的 `ControlConnectionWorker` 长连接。控制命令一次只发送一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用 `DownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每读一个固定大小的 chunk 就立即发送，不会把整个文件保存在内存中。
+`RemoteClient` 启动三个常驻工作线程，分别承载 `WatchConnectionWorker`、
+`ControlConnectionWorker` 和 `DownloadWorker`。GUI 线程通过
+`QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务，析构时使用
+`Qt::BlockingQueuedConnection` 先让 worker 停止，再退出并等待线程。
+
+鼠标、锁定和解锁使用单独的 `ControlConnectionWorker` 长连接。控制命令一次只发送一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用 `DownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每次最多读取 64 KiB 并立即发送，不会把整个文件保存在内存中。
 
 ### 第四步：服务端
 
@@ -107,13 +147,15 @@ RemoteServer 接受连接
   → 序列化响应 Packet
 ```
 
-`CommandService` 只处理轻量命令以及必须在 GUI 线程操作的锁屏窗口。`RemoteSession` 会把目录、下载和删除请求连同 socket 转交给 `FileRequestPool`。线程池按需创建 2 至 4 个常驻线程，空闲的 `FileRequestWorker` 会继续处理排队任务，避免为每次文件请求重复创建和销毁线程；队列同时限制了待处理请求数量。`ControlChannel` 和 `WatchScreen` 分别转交给独立的持久连接线程，避免截图数据阻塞鼠标输入。锁定和解锁由控制线程接收，再以 queued invocation 投递给 GUI 线程。
+`CommandService` 处理连接测试、磁盘列表、打开文件，以及必须在 GUI 线程操作的锁屏窗口。`RemoteSession` 会把目录、下载和删除请求连同 socket 转交给 `FileRequestPool`。线程池按需创建 2 至 4 个常驻线程，空闲的 `FileRequestWorker` 会继续处理排队任务，最多排队 64 个文件请求。`ControlChannel` 和 `WatchScreen` 分别转交给独立的持久连接线程，每类最多 4 条连接，避免截图数据阻塞鼠标输入。鼠标注入在控制线程中执行；锁定和解锁则以 queued invocation 投递给 GUI 线程。
 
 ### 第五步：公共协议
 
 - [Protocol.h](../include/common/Protocol.h)
+- [Protocol.cpp](../src/common/Protocol.cpp)
 - [Packet.h](../include/common/Packet.h)
 - [Packet.cpp](../src/common/Packet.cpp)
+- [ProtocolTestMain.cpp](../src/tests/ProtocolTestMain.cpp)
 
 重点关注：
 
@@ -121,8 +163,10 @@ RemoteServer 接受连接
 - payload 编解码辅助函数
 - `Packet::serialize()`：序列化
 - `Packet::tryParse()`：处理 TCP 字节流中的完整数据包
+- 包头、长度、命令、payload 和 16 位累加校验值的布局
+- 最大 64 MiB payload、非法长度恢复、半包和连续包处理
 
-修改协议时，客户端、服务端和 smoke test 必须同步验证。
+修改协议时，客户端、服务端、协议测试和 smoke test 必须同步验证。
 
 ### 第六步：远程屏幕交互
 
@@ -154,7 +198,7 @@ RemoteServer 接受连接
 | 信号槽 | `MainWindow::wireSignals()`、`RemoteClient` |
 | TCP 客户端/服务端 | `QTcpSocket`、`QTcpServer` |
 | 对象生命周期 | `QObject` parent、`std::unique_ptr` |
-| 工作线程 | `QThread`、worker object、queued connection |
+| 工作线程 | `QThread`、worker object、queued/blocking queued connection |
 | 定时任务 | `QTimer` |
 | 文件系统 | `QFile`、`QDir`、`QFileInfo`、`QSaveFile` |
 | 图片与绘制 | `QImage`、`QPainter`、Windows GDI |
@@ -165,7 +209,7 @@ RemoteServer 接受连接
 
 1. 从“测试连接”按钮开始，为调用链逐步加断点。
 2. 新增一个不修改系统状态的协议命令，例如返回服务端版本信息。
-3. 为 Packet 边界情况补充测试，例如半包、粘包和非法长度。
+3. 阅读现有 Packet 边界测试，再补充损坏校验值或最大 payload 附近的测试。
 4. 观察远程屏幕刷新频率，分析 `QTimer` 和网络开销。
 5. 将界面提示文本与业务错误分层，练习 Qt 的错误传播方式。
 
@@ -175,4 +219,4 @@ RemoteServer 接受连接
 - 遇到 Qt 类型跳转失败，先确认 `build/msvc-debug/compile_commands.json` 存在，再重启 `clangd`。
 - 遇到 `ui_*.h` 缺失，先完成一次构建；这些头文件由 `AUTOUIC` 生成。
 - 修改 `Q_OBJECT` 类后出现链接错误时，检查头文件是否包含在 CMake target 中，并重新运行 configure。
-- 协议修改后优先运行 `RemoteControlSmokeTest`，避免只验证界面路径。
+- 修改公共协议后先运行 CTest 中的 `RemoteControlProtocolTests`，再启动服务端运行 `RemoteControlSmokeTest`。

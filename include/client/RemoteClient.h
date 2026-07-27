@@ -203,10 +203,7 @@ private:
     QThread* m_downloadThread{nullptr};
     DownloadWorker* m_downloadWorker{nullptr};
     bool m_watchPending{false};
-    /** Generation used to discard asynchronous results from obsolete endpoints. */
-    quint64 m_endpointGeneration{0};
-    /** Generation used to discard results from stopped monitor sessions. */
-    quint64 m_watchGeneration{0};
-    /** Generation used to discard results from stopped control sessions. */
-    quint64 m_controlGeneration{0};
+    quint64 m_endpointGeneration{0};  ///< Discards results from obsolete endpoints.
+    quint64 m_watchGeneration{0};     ///< Discards results from stopped monitor sessions.
+    quint64 m_controlGeneration{0};   ///< Discards results from stopped control sessions.
 };

@@ -135,43 +135,5 @@
                 "outputOnFailure": true
             }
         }
-    ],
-    "workflowPresets": [
-        {
-            "name": "msvc-debug",
-            "displayName": "Configure, Build and Test Debug",
-            "steps": [
-                {
-                    "type": "configure",
-                    "name": "msvc-debug"
-                },
-                {
-                    "type": "build",
-                    "name": "msvc-debug"
-                },
-                {
-                    "type": "test",
-                    "name": "msvc-debug"
-                }
-            ]
-        },
-        {
-            "name": "msvc-release",
-            "displayName": "Configure, Build and Test Release",
-            "steps": [
-                {
-                    "type": "configure",
-                    "name": "msvc-release"
-                },
-                {
-                    "type": "build",
-                    "name": "msvc-release"
-                },
-                {
-                    "type": "test",
-                    "name": "msvc-release"
-                }
-            ]
-        }
     ]
 }

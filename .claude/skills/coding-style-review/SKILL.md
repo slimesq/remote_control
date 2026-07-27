@@ -69,15 +69,19 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 
 ## Initialization
 
-- Use brace initialization for variables, data members, temporaries, and constructor initializer
-  lists.
+- Use brace initialization when a variable, data member, temporary, or constructor initializer
+  needs an explicit initial value.
 - Initialize non-static members in their declarations when the value is independent of constructor
   arguments.
+- Give scalar, pointer, and enum members meaningful explicit defaults, such as `int m_count{0}`,
+  `Widget* m_widget{nullptr}`, or `Command m_command{Command::TestConnection}`.
+- Let safely default-constructible class members default construct without redundant empty braces,
+  such as `QString m_name;` or `QList<FileEntry> m_entries;`.
 - Order constructor initializers as the base class first, followed by members in declaration order.
 - Use parentheses only when braces change semantics or when required by an API/language construct.
 - Do not rewrite syntactic uses of `=`, including assignment, default arguments, enum values,
   comparisons, lambda captures, and `= default`/`= delete`, as if they were initialization errors.
-- Avoid redundant initialization when value initialization already provides the intended value.
+- Avoid redundant initialization when default construction already provides the intended value.
 
 ## Const Correctness and Variables
 
@@ -163,6 +167,8 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
   a return tag to constructors, destructors, or `void` functions.
 - Add concise class/interface documentation for client/server components. Do not repeat a function
   name in prose when the declaration is already self-explanatory.
+- Use `///<` only for concise trailing documentation of enum values or data members. Use a preceding
+  Doxygen block when the explanation needs multiple lines or tags.
 - Explain intent, ownership, protocol layout, platform constraints, and surprising behavior rather
   than narrating individual statements.
 - Keep comments accurate when behavior changes.

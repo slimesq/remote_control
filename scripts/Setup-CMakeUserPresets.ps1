@@ -52,6 +52,82 @@ function Get-VisualStudioEnvironment {
     return $environment
 }
 
+# Windows PowerShell 5.1 produces uneven array indentation, so format compact JSON explicitly.
+function Format-JsonText {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Json,
+        [ValidateRange(1, 8)]
+        [int]$IndentSize = 4
+    )
+
+    $builder = New-Object System.Text.StringBuilder
+    $indentLevel = 0
+    $insideString = $false
+    $escapeNext = $false
+
+    for ($index = 0; $index -lt $Json.Length; $index++) {
+        $character = $Json[$index]
+        if ($insideString) {
+            [void]$builder.Append($character)
+            if ($escapeNext) {
+                $escapeNext = $false
+            } elseif ($character -eq "\") {
+                $escapeNext = $true
+            } elseif ($character -eq '"') {
+                $insideString = $false
+            }
+            continue
+        }
+
+        if ($character -eq '"') {
+            $insideString = $true
+            [void]$builder.Append($character)
+            continue
+        }
+
+        if ($character -eq "{" -or $character -eq "[") {
+            [void]$builder.Append($character)
+            $closingCharacter = if ($character -eq "{") { "}" } else { "]" }
+            if ($index + 1 -lt $Json.Length -and $Json[$index + 1] -ne $closingCharacter) {
+                $indentLevel++
+                [void]$builder.Append("`r`n")
+                [void]$builder.Append(" " * ($indentLevel * $IndentSize))
+            }
+            continue
+        }
+
+        if ($character -eq "}" -or $character -eq "]") {
+            $openingCharacter = if ($character -eq "}") { "{" } else { "[" }
+            if ($index -gt 0 -and $Json[$index - 1] -ne $openingCharacter) {
+                $indentLevel--
+                [void]$builder.Append("`r`n")
+                [void]$builder.Append(" " * ($indentLevel * $IndentSize))
+            }
+            [void]$builder.Append($character)
+            continue
+        }
+
+        if ($character -eq ",") {
+            [void]$builder.Append($character)
+            [void]$builder.Append("`r`n")
+            [void]$builder.Append(" " * ($indentLevel * $IndentSize))
+            continue
+        }
+
+        if ($character -eq ":") {
+            [void]$builder.Append(": ")
+            continue
+        }
+
+        if (-not [char]::IsWhiteSpace($character)) {
+            [void]$builder.Append($character)
+        }
+    }
+
+    return $builder.ToString()
+}
+
 if (-not (Test-Path -LiteralPath $vswhere)) {
     throw "vswhere.exe was not found. Install Visual Studio Build Tools with C++ support."
 }
@@ -196,29 +272,10 @@ $presetDocument = [ordered]@{
             configurePreset = "local-msvc-release"
         }
     )
-    workflowPresets = @(
-        [ordered]@{
-            name = "local-msvc-debug"
-            displayName = "Configure, Build and Test Local Debug"
-            steps = @(
-                [ordered]@{ type = "configure"; name = "local-msvc-debug" },
-                [ordered]@{ type = "build"; name = "local-msvc-debug" },
-                [ordered]@{ type = "test"; name = "local-msvc-debug" }
-            )
-        },
-        [ordered]@{
-            name = "local-msvc-release"
-            displayName = "Configure, Build and Test Local Release"
-            steps = @(
-                [ordered]@{ type = "configure"; name = "local-msvc-release" },
-                [ordered]@{ type = "build"; name = "local-msvc-release" },
-                [ordered]@{ type = "test"; name = "local-msvc-release" }
-            )
-        }
-    )
 }
 
-$json = $presetDocument | ConvertTo-Json -Depth 20
+$compactJson = $presetDocument | ConvertTo-Json -Depth 20 -Compress
+$json = Format-JsonText -Json $compactJson
 $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
 $jsonContent = "$json`r`n"
 $presetChanged = -not (Test-Path -LiteralPath $outputPath) -or

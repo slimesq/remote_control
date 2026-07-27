@@ -6,7 +6,7 @@
 自动设置 Qt Runtime，并从指定构建目录递归查找目标程序。
 
 .PARAMETER Target
-client：客户端；server：服务端；smoke：协议测试。
+client：客户端；server：服务端；smoke：需要运行中服务端的端到端测试。
 
 .PARAMETER BuildDir
 可选的构建目录。存在多个构建目录时建议显式指定。
