@@ -150,7 +150,7 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 - `TestConnection`、`ListDrives` 和 `RunFile` 使用一次性短连接。客户端通过事件循环异步处理，不会同步等待网络；服务端由 `RemoteSession` 转交 `CommandService`。
 - `ListDirectory`、`DownloadFile` 和 `DeleteFile` 使用一次性文件任务连接。服务端将 socket 和请求转移到 2～4 个可复用的 `FileRequestWorker`；待处理队列最多保留 64 个请求。
 - 客户端下载、远程画面和远程控制分别使用独立的常驻 `QThread` 和 worker object。
-- `WatchScreen` 使用独立监控长连接，一次只允许一帧处于请求中；服务端最多接受 4 条监控连接。
+- `WatchScreen` 使用独立监控长连接，一次只允许一帧处于请求中；客户端在每帧完成后按最高约 30 FPS 自适应调度下一帧，服务端最多接受 4 条监控连接。
 - `ControlChannel` 使用独立控制长连接，命令按顺序等待响应，连续鼠标移动会合并；服务端最多接受 4 条控制连接。
 - 监控和控制使用不同连接，避免较大的截图数据阻塞鼠标与锁定命令。
 

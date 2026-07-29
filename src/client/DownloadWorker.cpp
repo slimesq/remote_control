@@ -1,5 +1,7 @@
 #include "client/DownloadWorker.h"
 
+#include "common/Packet.h"
+
 #include <QDataStream>
 #include <QSaveFile>
 #include <QTcpSocket>
@@ -35,11 +37,11 @@ void DownloadWorker::startDownload(QString const& _host,
                                    QString const& _remotePath,
                                    QString const& _localPath)
 {
-    if (this->m_shuttingDown)
+    if (this->m_state == DownloadState::ShuttingDown)
     {
         return;
     }
-    if (this->m_active)
+    if (this->m_state == DownloadState::Downloading)
     {
         emit this->finished(
             _remotePath, _localPath, false, tr("Another download is already active."));
@@ -53,7 +55,7 @@ void DownloadWorker::startDownload(QString const& _host,
     this->m_expectedBytes = -1;
     this->m_receivedBytes = 0;
     this->m_buffer.clear();
-    this->m_active = true;
+    this->m_state = DownloadState::Downloading;
 
     if (this->m_host.isEmpty() || this->m_port == 0 || this->m_remotePath.isEmpty() ||
         this->m_localPath.isEmpty())
@@ -83,10 +85,10 @@ void DownloadWorker::startDownload(QString const& _host,
 
 void DownloadWorker::shutdown()
 {
-    this->m_shuttingDown = true;
-    if (this->m_active)
+    bool const wasDownloading{this->m_state == DownloadState::Downloading};
+    this->m_state = DownloadState::ShuttingDown;
+    if (wasDownloading)
     {
-        this->m_active = false;
         this->m_timeoutTimer->stop();
         if (this->m_file && this->m_file->isOpen())
         {
@@ -120,7 +122,7 @@ void DownloadWorker::onReadyRead()
         return;
     }
 
-    while (this->m_active)
+    while (this->m_state == DownloadState::Downloading)
     {
         auto const packet{remote_control::Packet::tryParse(this->m_buffer)};
         if (!packet.has_value())
@@ -138,7 +140,7 @@ void DownloadWorker::onReadyRead()
 
 void DownloadWorker::onDisconnected()
 {
-    if (this->m_active)
+    if (this->m_state == DownloadState::Downloading)
     {
         this->fail(tr("Download was interrupted."));
     }
@@ -147,7 +149,7 @@ void DownloadWorker::onDisconnected()
 void DownloadWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 {
     static_cast<void>(_error);
-    if (this->m_active)
+    if (this->m_state == DownloadState::Downloading)
     {
         this->fail(this->m_socket->errorString());
     }
@@ -155,7 +157,7 @@ void DownloadWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 
 void DownloadWorker::onTimeout()
 {
-    if (this->m_active)
+    if (this->m_state == DownloadState::Downloading)
     {
         this->fail(tr("The download timed out."));
     }
@@ -163,8 +165,10 @@ void DownloadWorker::onTimeout()
 
 void DownloadWorker::processPacket(QByteArray const& _payload)
 {
+    // 1. Interpret the first payload as the fixed-width remote file-size header.
     if (this->m_expectedBytes < 0)
     {
+        // Reject malformed headers before reading the qint64 size value.
         if (_payload.size() != static_cast<int>(sizeof(qint64)))
         {
             this->fail(tr("The download header is invalid."));
@@ -174,11 +178,13 @@ void DownloadWorker::processPacket(QByteArray const& _payload)
         QDataStream stream{_payload};
         stream.setByteOrder(QDataStream::LittleEndian);
         stream >> this->m_expectedBytes;
+        // A negative size reports that the server could not open the requested file.
         if (this->m_expectedBytes < 0)
         {
             this->fail(tr("The remote file cannot be read."));
             return;
         }
+        // Complete an empty file immediately because no data packets will follow.
         if (this->m_expectedBytes == 0)
         {
             emit this->progress(this->m_remotePath, 0, 0);
@@ -187,11 +193,13 @@ void DownloadWorker::processPacket(QByteArray const& _payload)
         return;
     }
 
+    // 2. Reject data that exceeds the file size declared by the server.
     if (this->m_receivedBytes + _payload.size() > this->m_expectedBytes)
     {
         this->fail(tr("Received more download data than expected."));
         return;
     }
+    // 3. Persist the complete payload and reject unavailable or partial writes.
     if (!this->m_file || this->m_file->write(_payload) != _payload.size())
     {
         this->fail(tr("Failed to write the local file."));
@@ -200,6 +208,7 @@ void DownloadWorker::processPacket(QByteArray const& _payload)
 
     this->m_receivedBytes += _payload.size();
     emit this->progress(this->m_remotePath, this->m_receivedBytes, this->m_expectedBytes);
+    // 4. Commit the temporary file after all declared bytes have been received.
     if (this->m_receivedBytes == this->m_expectedBytes)
     {
         this->completeSuccessfully();
@@ -218,7 +227,7 @@ void DownloadWorker::completeSuccessfully()
 
     QString const remotePath{this->m_remotePath};
     QString const localPath{this->m_localPath};
-    this->m_active = false;
+    this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
     this->m_file.reset();
     this->resetSocket();
@@ -227,14 +236,14 @@ void DownloadWorker::completeSuccessfully()
 
 void DownloadWorker::fail(QString const& _message)
 {
-    if (!this->m_active)
+    if (this->m_state != DownloadState::Downloading)
     {
         return;
     }
 
     QString const remotePath{this->m_remotePath};
     QString const localPath{this->m_localPath};
-    this->m_active = false;
+    this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
     if (this->m_file && this->m_file->isOpen())
     {

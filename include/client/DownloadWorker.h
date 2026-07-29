@@ -1,8 +1,7 @@
 #pragma once
 
-#include "common/Packet.h"
-
 #include <QAbstractSocket>
+#include <QByteArray>
 #include <QObject>
 #include <QString>
 
@@ -62,6 +61,14 @@ signals:
                   QString const& _message);
 
 private:
+    /** @brief Lifecycle states of the reusable download worker. */
+    enum class DownloadState
+    {
+        Idle,          ///< The worker is ready to start a download.
+        Downloading,   ///< One download is currently active.
+        ShuttingDown,  ///< The worker is releasing resources before thread exit.
+    };
+
     /** @brief Sends the download request after connecting. */
     void onConnected();
 
@@ -108,6 +115,5 @@ private:
     QByteArray m_buffer;
     qint64 m_expectedBytes{-1};
     qint64 m_receivedBytes{0};
-    bool m_active{false};
-    bool m_shuttingDown{false};
+    DownloadState m_state{DownloadState::Idle};
 };

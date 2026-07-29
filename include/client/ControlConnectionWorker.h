@@ -1,8 +1,9 @@
 #pragma once
 
-#include "common/Packet.h"
+#include "common/Protocol.h"
 
 #include <QAbstractSocket>
+#include <QByteArray>
 #include <QObject>
 #include <QQueue>
 #include <QString>
@@ -83,6 +84,16 @@ signals:
                        QString const& _message);
 
 private:
+    /** @brief Lifecycle states of the persistent control connection. */
+    enum class ConnectionState
+    {
+        Disconnected,  ///< No control connection is active.
+        Connecting,    ///< The TCP connection is being established.
+        Handshaking,   ///< The control-channel handshake is awaiting confirmation.
+        Ready,         ///< The control channel can send queued commands.
+        ShuttingDown,  ///< The worker is releasing resources before thread exit.
+    };
+
     struct PendingCommand
     {
         remote_control::Command command{remote_control::Command::MouseEvent};
@@ -149,6 +160,5 @@ private:
     QByteArray m_buffer;
     QQueue<PendingCommand> m_queue;
     std::optional<PendingCommand> m_activeCommand;
-    bool m_handshakeComplete{false};
-    bool m_shuttingDown{false};
+    ConnectionState m_state{ConnectionState::Disconnected};
 };

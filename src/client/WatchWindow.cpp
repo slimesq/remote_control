@@ -15,7 +15,7 @@ namespace
 constexpr int MoveEventIntervalMs{16};
 constexpr int MinimumScreenWidth{800};
 constexpr int MinimumScreenHeight{500};
-constexpr int WatchFrameIntervalMs{200};
+constexpr int MinimumWatchFrameIntervalMs{33};  // Caps requests at approximately 30 FPS.
 
 /**
  * @brief Returns a mouse position for both Qt 5 and Qt 6.
@@ -154,7 +154,7 @@ WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
     : QDialog{_parent},
       m_client{_client},
       m_ui{std::make_unique<Ui::WatchWindow>()},
-      m_timer{new QTimer{this}}
+      m_frameRequestTimer{new QTimer{this}}
 {
     this->m_ui->setupUi(this);
 
@@ -163,9 +163,10 @@ WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
     this->m_screenWidget = new RemoteScreenWidget{this->m_ui->screenContainer};
     screenLayout->addWidget(this->m_screenWidget);
 
-    this->m_timer->setInterval(WatchFrameIntervalMs);
+    // A single-shot timer schedules only after the current frame request has completed.
+    this->m_frameRequestTimer->setSingleShot(true);
 
-    connect(this->m_timer, &QTimer::timeout, this->m_client, &RemoteClient::requestWatchFrame);
+    connect(this->m_frameRequestTimer, &QTimer::timeout, this, &WatchWindow::requestNextFrame);
     connect(this->m_screenWidget,
             &RemoteScreenWidget::mouseEventCreated,
             this->m_client,
@@ -180,22 +181,54 @@ WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
             &RemoteClient::watchFrameReady,
             this->m_screenWidget,
             &RemoteScreenWidget::setImage);
+    connect(
+        this->m_client, &RemoteClient::watchRequestFinished, this, &WatchWindow::scheduleNextFrame);
 }
 
 WatchWindow::~WatchWindow() = default;
 
 void WatchWindow::showEvent(QShowEvent* _event)
 {
-    this->m_timer->start();
-    // Kick off the first frame immediately so the dialog does not open empty.
-    this->m_client->requestWatchFrame();
     QDialog::showEvent(_event);
+    this->m_frameRequestTimer->stop();
+    this->m_frameRequestElapsed.invalidate();
+    // Kick off the first frame immediately so the dialog does not open empty.
+    this->requestNextFrame();
 }
 
 void WatchWindow::closeEvent(QCloseEvent* _event)
 {
-    this->m_timer->stop();
+    this->m_frameRequestTimer->stop();
+    this->m_frameRequestElapsed.invalidate();
     this->m_client->stopWatchStream();
     this->m_client->stopControlStream();
     QDialog::closeEvent(_event);
+}
+
+void WatchWindow::requestNextFrame()
+{
+    if (!this->isVisible())
+    {
+        return;
+    }
+
+    // Measure from request submission so processing time counts toward the frame interval.
+    this->m_frameRequestElapsed.start();
+    this->m_client->requestWatchFrame();
+}
+
+void WatchWindow::scheduleNextFrame()
+{
+    if (!this->isVisible())
+    {
+        return;
+    }
+
+    qint64 const elapsedMs{this->m_frameRequestElapsed.isValid()
+                               ? this->m_frameRequestElapsed.elapsed()
+                               : MinimumWatchFrameIntervalMs};
+    int const delayMs{elapsedMs >= MinimumWatchFrameIntervalMs
+                          ? 0
+                          : MinimumWatchFrameIntervalMs - static_cast<int>(elapsedMs)};
+    this->m_frameRequestTimer->start(delayMs);
 }

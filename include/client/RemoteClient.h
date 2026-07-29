@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common/Packet.h"
 #include "common/Protocol.h"
 
 #include <QImage>
@@ -178,6 +177,9 @@ signals:
      */
     void watchFrameReady(QImage const& _image);
 
+    /** @brief Reports that the current screen-frame request has finished. */
+    void watchRequestFinished();
+
     /**
      * @brief Reports a connection or frame-request failure for Command::WatchScreen.
      * @param _message User-facing failure message.
@@ -202,6 +204,7 @@ private:
     ControlConnectionWorker* m_controlWorker{nullptr};
     QThread* m_downloadThread{nullptr};
     DownloadWorker* m_downloadWorker{nullptr};
+    /** @brief GUI-side admission flag kept set until the worker reports frame-request completion. */
     bool m_watchPending{false};
     quint64 m_endpointGeneration{0};  ///< Discards results from obsolete endpoints.
     quint64 m_watchGeneration{0};     ///< Discards results from stopped monitor sessions.

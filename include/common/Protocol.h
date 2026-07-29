@@ -28,6 +28,13 @@ enum class Command : quint16
     TestConnection = 1981,
 };
 
+/** @brief Status values encoded in the first byte of a command-status payload. */
+enum class StatusCode : quint8
+{
+    Failure = 0,  ///< The command failed.
+    Success = 1,  ///< The command completed successfully.
+};
+
 /** @brief Mouse actions that can be forwarded to the remote host. */
 enum class MouseAction : quint16
 {
@@ -104,13 +111,10 @@ struct FileEntry
 /**
  * @brief Parses a common success/failure response payload.
  * @param _payload Serialized status payload.
- * @param _defaultSuccess Result used for an empty payload.
  * @param _messageOut Optional output for the decoded message.
- * @return Decoded success state.
+ * @return true only for an explicit StatusCode::Success; otherwise false.
  */
-[[nodiscard]] bool parseStatusPayload(QByteArray const& _payload,
-                                      bool _defaultSuccess,
-                                      QString* _messageOut = nullptr);
+[[nodiscard]] bool parseStatusPayload(QByteArray const& _payload, QString* _messageOut = nullptr);
 
 /**
  * @brief Decodes UTF-8 protocol bytes into a QString.

@@ -103,23 +103,28 @@ FileEntry FileEntry::fromPayload(QByteArray const& _payload)
 QByteArray makeStatusPayload(bool _success, QString const& _message)
 {
     QByteArray payload;
-    payload.append(_success ? '\x01' : '\x00');
+    StatusCode const statusCode{_success ? StatusCode::Success : StatusCode::Failure};
+    payload.append(static_cast<char>(statusCode));
     payload.append(encodeUtf8(_message));
     return payload;
 }
 
-bool parseStatusPayload(QByteArray const& _payload, bool _defaultSuccess, QString* _messageOut)
+bool parseStatusPayload(QByteArray const& _payload, QString* _messageOut)
 {
+    // 1. Reject responses that do not carry the required status byte.
     if (_payload.isEmpty())
     {
         if (_messageOut)
         {
             _messageOut->clear();
         }
-        return _defaultSuccess;
+        return false;
     }
 
-    bool const success{_payload.front() != '\0'};
+    // 2. Accept only the explicitly defined success code; unknown values remain failures.
+    StatusCode const statusCode{static_cast<StatusCode>(static_cast<quint8>(_payload.front()))};
+    bool const success{statusCode == StatusCode::Success};
+    // 3. Decode the remaining UTF-8 bytes only when the caller requests the optional message.
     if (_messageOut)
     {
         *_messageOut = decodeUtf8(_payload.mid(1));

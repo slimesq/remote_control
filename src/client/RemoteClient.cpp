@@ -3,6 +3,7 @@
 #include "client/ControlConnectionWorker.h"
 #include "client/DownloadWorker.h"
 #include "client/WatchConnectionWorker.h"
+#include "common/Packet.h"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -64,6 +65,7 @@ public:
         this->m_timeoutTimer->setSingleShot(true);
         this->m_timeoutTimer->setInterval(RequestInactivityTimeoutMs);
         connect(this->m_timeoutTimer, &QTimer::timeout, this, [this] {
+            CallbackScope const scope{this};
             if (!this->isCurrentGeneration())
             {
                 this->discardStaleResult();
@@ -84,6 +86,7 @@ private:
     /** @brief Sends the serialized request after connecting. */
     void onConnected()
     {
+        CallbackScope const scope{this};
         this->m_timeoutTimer->start();
         remote_control::Packet const packet{this->m_command, this->m_payload};
         this->m_socket.write(packet.serialize());
@@ -92,6 +95,7 @@ private:
     /** @brief Parses and dispatches available response packets. */
     void onReadyRead()
     {
+        CallbackScope const scope{this};
         this->m_timeoutTimer->start();
         // 1. Preserve unread bytes so packets split across TCP reads can be reconstructed.
         this->m_buffer.append(this->m_socket.readAll());
@@ -104,13 +108,13 @@ private:
                 break;
             }
             this->handlePacket(packet.value());
-            if (this->m_finished)
+            if (this->hasFinished())
             {
                 break;
             }
         }
         // 3. Bound incomplete responses as well as fully parsed protocol packets.
-        if (!this->m_finished &&
+        if (!this->hasFinished() &&
             this->m_buffer.size() > remote_control::Packet::MaximumSerializedSize)
         {
             this->fail(tr("The remote response exceeds the maximum packet size."));
@@ -120,12 +124,13 @@ private:
     /** @brief Completes cleanup or reports an incomplete response. */
     void onDisconnected()
     {
+        CallbackScope const scope{this};
         if (!this->isCurrentGeneration())
         {
             this->discardStaleResult();
             return;
         }
-        if (this->m_finished)
+        if (this->hasFinished())
         {
             this->requestDeletion();
             return;
@@ -149,8 +154,9 @@ private:
      */
     void onErrorOccurred(QAbstractSocket::SocketError _error)
     {
+        CallbackScope const scope{this};
         static_cast<void>(_error);
-        if (this->m_finished)
+        if (this->hasFinished())
         {
             return;
         }
@@ -162,11 +168,20 @@ private:
         this->fail(this->m_socket.errorString());
     }
 
+    /** @brief Lifecycle states of one short-lived request. */
+    enum class RequestState
+    {
+        Active,             ///< The request is awaiting its complete response.
+        Finished,           ///< The result is complete and transport cleanup may continue.
+        CleanupDeferred,    ///< Deletion was requested while a callback remained active.
+        DeletionScheduled,  ///< Deferred QObject deletion has been scheduled.
+    };
+
     class CallbackScope final
     {
     public:
         /**
-         * @brief Tracks entry into a request callback.
+         * @brief Tracks entry into a Qt event callback.
          * @param _request Request whose callback depth is tracked.
          */
         explicit CallbackScope(PendingRequest* _request) : m_request{_request}
@@ -174,15 +189,15 @@ private:
             ++this->m_request->m_callbackDepth;
         }
 
-        /** @brief Leaves the callback and performs deferred cleanup. */
+        /** @brief Leaves the Qt event callback and performs deferred cleanup. */
         ~CallbackScope()
         {
             // UI slots can spin nested event loops; delay deletion until we fully unwind.
             --this->m_request->m_callbackDepth;
-            if (this->m_request->m_callbackDepth == 0 && this->m_request->m_cleanupPending)
+            if (this->m_request->m_callbackDepth == 0 &&
+                this->m_request->m_state == RequestState::CleanupDeferred)
             {
-                this->m_request->m_cleanupPending = false;
-                this->m_request->deleteLater();
+                this->m_request->requestDeletion();
             }
         }
 
@@ -193,22 +208,36 @@ private:
     /** @brief Deletes the request after active callbacks have unwound. */
     void requestDeletion()
     {
-        if (this->m_callbackDepth > 0)
+        if (this->m_state == RequestState::DeletionScheduled)
         {
-            this->m_cleanupPending = true;
             return;
         }
+        if (this->m_callbackDepth > 0)
+        {
+            this->m_state = RequestState::CleanupDeferred;
+            return;
+        }
+        this->m_state = RequestState::DeletionScheduled;
         deleteLater();
+    }
+
+    /**
+     * @brief Checks whether response processing has completed.
+     * @return true after the request leaves its active state; otherwise false.
+     */
+    [[nodiscard]] bool hasFinished() const noexcept
+    {
+        return this->m_state != RequestState::Active;
     }
 
     /** @brief Marks the request complete. */
     void markFinished()
     {
-        if (this->m_finished)
+        if (this->hasFinished())
         {
             return;
         }
-        this->m_finished = true;
+        this->m_state = RequestState::Finished;
         this->m_timeoutTimer->stop();
     }
 
@@ -224,7 +253,7 @@ private:
     /** @brief Silently releases a result produced for an obsolete endpoint. */
     void discardStaleResult()
     {
-        if (this->m_finished)
+        if (this->hasFinished())
         {
             this->requestDeletion();
             return;
@@ -240,8 +269,6 @@ private:
      */
     void handlePacket(remote_control::Packet const& _packet)
     {
-        CallbackScope const scope{this};
-
         if (!this->isCurrentGeneration())
         {
             this->discardStaleResult();
@@ -275,19 +302,10 @@ private:
                 break;
             case remote_control::Command::RunFile:
             case remote_control::Command::DeleteFile:
-            case remote_control::Command::LockMachine:
-            case remote_control::Command::UnlockMachine:
-            case remote_control::Command::MouseEvent:
-                this->handleStatusPacket(_packet.payload);
+                this->handleFileStatusPacket(_packet.payload);
                 break;
-            case remote_control::Command::DownloadFile:
-                this->fail(tr("Downloads require the dedicated transfer worker."));
-                break;
-            case remote_control::Command::WatchScreen:
-                this->fail(tr("Monitor frames require the persistent watch connection."));
-                break;
-            case remote_control::Command::ControlChannel:
-                this->fail(tr("Control commands require the persistent control connection."));
+            default:
+                this->fail(tr("Unsupported short-lived request command."));
                 break;
         }
     }
@@ -319,13 +337,13 @@ private:
     }
 
     /**
-     * @brief Handles a common command-status response.
+     * @brief Handles a RunFile or DeleteFile status response.
      * @param _payload Serialized command-status payload.
      */
-    void handleStatusPacket(QByteArray const& _payload)
+    void handleFileStatusPacket(QByteArray const& _payload)
     {
         QString message;
-        bool const success{remote_control::parseStatusPayload(_payload, true, &message)};
+        bool const success{remote_control::parseStatusPayload(_payload, &message)};
         if (!success)
         {
             this->fail(message.isEmpty() ? tr("The command failed.") : message);
@@ -335,17 +353,8 @@ private:
         this->markFinished();
         QString const resultMessage{message.isEmpty() ? tr("The command completed successfully.")
                                                       : message};
-        if (this->m_command == remote_control::Command::RunFile ||
-            this->m_command == remote_control::Command::DeleteFile)
-        {
-            emit this->m_client->fileCommandFinished(
-                this->m_command, this->m_context, true, resultMessage);
-        }
-        else
-        {
-            emit this->m_client->controlCommandFinished(
-                this->m_command, this->m_context, true, resultMessage);
-        }
+        emit this->m_client->fileCommandFinished(
+            this->m_command, this->m_context, true, resultMessage);
         this->m_socket.disconnectFromHost();
     }
 
@@ -355,12 +364,10 @@ private:
      */
     void fail(QString const& _message)
     {
-        if (this->m_finished)
+        if (this->hasFinished())
         {
             return;
         }
-
-        CallbackScope const scope{this};
 
         // 1. Mark completion before signals can re-enter the request through Qt.
         this->markFinished();
@@ -375,23 +382,12 @@ private:
             case remote_control::Command::ListDirectory:
                 emit this->m_client->directoryListFinished(this->m_context, {}, false, _message);
                 break;
-            case remote_control::Command::DownloadFile:
-                emit this->m_client->downloadFinished(this->m_context, {}, false, _message);
-                break;
-            case remote_control::Command::WatchScreen:
-                emit this->m_client->watchFailed(_message);
-                break;
             case remote_control::Command::RunFile:
             case remote_control::Command::DeleteFile:
                 emit this->m_client->fileCommandFinished(
                     this->m_command, this->m_context, false, _message);
                 break;
-            case remote_control::Command::LockMachine:
-            case remote_control::Command::UnlockMachine:
-            case remote_control::Command::MouseEvent:
-            case remote_control::Command::ControlChannel:
-                emit this->m_client->controlCommandFinished(
-                    this->m_command, this->m_context, false, _message);
+            default:
                 break;
         }
 
@@ -412,9 +408,8 @@ private:
     QTimer* m_timeoutTimer{nullptr};               ///< Detects request inactivity.
     QByteArray m_buffer;                           ///< Unparsed received bytes.
     QList<remote_control::FileEntry> m_entries;    ///< Accumulated directory entries.
-    bool m_finished{false};                        ///< Whether the request has finished.
-    int m_callbackDepth{0};                        ///< Number of active nested callbacks.
-    bool m_cleanupPending{false};                  ///< Whether cleanup must be deferred.
+    RequestState m_state{RequestState::Active};    ///< Current request lifecycle state.
+    int m_callbackDepth{0};                        ///< Number of active nested Qt callbacks.
 };
 
 RemoteClient::RemoteClient(QObject* _parent)
@@ -427,8 +422,6 @@ RemoteClient::RemoteClient(QObject* _parent)
       m_downloadWorker{new DownloadWorker{}}
 {
     qRegisterMetaType<remote_control::Command>();
-    qRegisterMetaType<remote_control::FileEntry>();
-    qRegisterMetaType<QList<remote_control::FileEntry>>();
 
     this->m_watchWorker->moveToThread(this->m_watchThread);
     connect(this->m_watchThread, &QThread::finished, this->m_watchWorker, &QObject::deleteLater);
@@ -457,6 +450,7 @@ RemoteClient::RemoteClient(QObject* _parent)
                 if (_generation == this->m_watchGeneration)
                 {
                     this->setWatchFramePending(false);
+                    emit this->watchRequestFinished();
                 }
             });
 
@@ -493,15 +487,8 @@ RemoteClient::RemoteClient(QObject* _parent)
         this->m_downloadThread, &QThread::finished, this->m_downloadWorker, &QObject::deleteLater);
     connect(
         this->m_downloadWorker, &DownloadWorker::progress, this, &RemoteClient::downloadProgress);
-    connect(this->m_downloadWorker,
-            &DownloadWorker::finished,
-            this,
-            [this](QString const& _remotePath,
-                   QString const& _localPath,
-                   bool _success,
-                   QString const& _message) {
-                emit this->downloadFinished(_remotePath, _localPath, _success, _message);
-            });
+    connect(
+        this->m_downloadWorker, &DownloadWorker::finished, this, &RemoteClient::downloadFinished);
 
     this->m_watchThread->start();
     this->m_controlThread->start();
@@ -510,12 +497,15 @@ RemoteClient::RemoteClient(QObject* _parent)
 
 RemoteClient::~RemoteClient()
 {
+    // Shut down each worker in its owning thread before stopping and joining that thread.
     if (this->m_watchThread->isRunning())
     {
+        // Blocking delivery completes worker-owned cleanup before the event loop is stopped.
         QMetaObject::invokeMethod(
             this->m_watchWorker,
             [worker = this->m_watchWorker] { worker->shutdown(); },
             Qt::BlockingQueuedConnection);
+        // Request a normal event-loop exit, then wait until the thread has fully terminated.
         this->m_watchThread->quit();
         this->m_watchThread->wait();
     }
@@ -543,7 +533,9 @@ RemoteClient::~RemoteClient()
 
 void RemoteClient::setEndpoint(QString const& _host, quint16 _port)
 {
-    if (this->m_host != _host || this->m_port != _port)
+    bool const endpointChanged{this->m_host != _host || this->m_port != _port};
+    bool const watchRequestWasPending{endpointChanged && this->hasPendingWatchFrame()};
+    if (endpointChanged)
     {
         ++this->m_endpointGeneration;
         this->stopWatchStream();
@@ -551,6 +543,11 @@ void RemoteClient::setEndpoint(QString const& _host, quint16 _port)
     }
     this->m_host = _host;
     this->m_port = _port;
+    if (watchRequestWasPending)
+    {
+        // The obsolete worker completion will be discarded, so release the visible scheduler now.
+        emit this->watchRequestFinished();
+    }
 }
 
 void RemoteClient::testConnection()

@@ -1,7 +1,6 @@
 #include "common/Packet.h"
 #include "common/Protocol.h"
 
-#include <QBuffer>
 #include <QCursor>
 #include <QDataStream>
 #include <QDir>
@@ -13,7 +12,6 @@
 #include <QTemporaryDir>
 
 #include <cstdlib>
-#include <functional>
 #include <future>
 #include <iostream>
 #include <vector>
@@ -485,7 +483,7 @@ bool validateStatusReply(ResponseBundle const& _response,
     }
     QString message;
     bool const success{
-        remote_control::parseStatusPayload(_response.packets.first().payload, true, &message)};
+        remote_control::parseStatusPayload(_response.packets.first().payload, &message)};
     return expect(success == _expectedSuccess,
                   _label + QStringLiteral(": status payload should match expected result"));
 }
@@ -730,8 +728,7 @@ int main(int argc, char* argv[])
         {
             QString message;
             remote_control::Packet const& response{controlResponse.packets[responseIndex]};
-            bool const success{
-                remote_control::parseStatusPayload(response.payload, false, &message)};
+            bool const success{remote_control::parseStatusPayload(response.payload, &message)};
             allPassed &= expect(response.command == remote_control::Command::MouseEvent && success,
                                 QStringLiteral("control channel should execute mouse events"));
         }

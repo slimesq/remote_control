@@ -96,6 +96,51 @@ RemoteControlSmokeTest ──────► 使用相同协议端到端验证�
 等待下一次 `readyRead()`，从而同时处理 TCP 拆包、粘包和目录多包响应。每次连接成功或
 收到新数据都会重新启动 15 秒无活动超时，请求完成时停止计时器。
 
+#### 为什么 `PendingRequest` 需要 `CallbackScope`
+
+`PendingRequest`、`RemoteClient` 和 `MainWindow` 位于同一个 GUI 线程，因此默认的
+`Qt::AutoConnection` 会采用直接连接：`PendingRequest` 发出结果信号时，会同步执行
+`MainWindow::wireSignals()` 中对应的 lambda。部分 lambda 会调用
+`QMessageBox::information()` 或 `QMessageBox::warning()`；这些模态函数在消息框关闭前
+会运行一个嵌套 GUI 事件循环。
+
+另一方面，服务端会在短连接响应发送完成后主动断开连接：普通命令由
+`RemoteSession::processPacket()` 断开，目录和删除等文件命令由
+`FileRequestWorker::releaseSocket()` 断开。因此响应数据和 TCP 断开事件可能相继到达，
+产生下面的回调重入：
+
+```text
+PendingRequest::onReadyRead()
+  → 解析响应并标记请求完成
+  → emit connectionTested(...) 等结果信号
+  → MainWindow 的直接连接 lambda
+  → QMessageBox 打开模态对话框并运行嵌套事件循环
+  → 嵌套事件循环处理服务端发来的 disconnected 事件
+  → PendingRequest::onDisconnected()
+  → requestDeletion()
+```
+
+此时外层 `onReadyRead()` 仍停留在调用栈中。如果 `requestDeletion()` 立即调用
+`deleteLater()`，嵌套事件循环可能在消息框关闭前处理 `DeferredDelete` 事件；消息框关闭
+后，外层 `onReadyRead()` 将恢复执行并继续访问已经销毁的 `PendingRequest`。这里主要防止
+的是回调期间的提前销毁和 use-after-free，而不只是重复删除。
+
+`CallbackScope` 只创建在 `PendingRequest` 的 Qt 事件入口中：定时器 `timeout` 回调以及
+`onConnected()`、`onReadyRead()`、`onDisconnected()`、`onErrorOccurred()`。构造时增加
+`m_callbackDepth`，析构时减少它。`requestDeletion()` 在回调仍活动时把状态改为
+`RequestState::CleanupDeferred`；最外层 `CallbackScope` 退出后再切换到
+`RequestState::DeletionScheduled` 并调用一次 `deleteLater()`。
+
+```text
+Active
+  → Finished
+  → CleanupDeferred      （仍有 Qt 回调处于调用栈中）
+  → DeletionScheduled    （最外层 Qt 回调已经退出）
+```
+
+这个保护针对的是会自行清理的 `PendingRequest`，不是要求项目中每个普通 slot 都创建
+`CallbackScope`。
+
 三个 generation 分别管理不同范围的过期结果：
 
 - `m_endpointGeneration`：地址或端口变化后，丢弃旧 endpoint 的一次性请求结果。
@@ -108,14 +153,17 @@ RemoteControlSmokeTest ──────► 使用相同协议端到端验证�
 远程屏幕使用独立工作线程和持久连接：
 
 ```text
-WatchWindow 定时请求下一帧
+WatchWindow 立即请求首帧
   → RemoteClient 将任务投递给 WatchConnectionWorker
   → 工作线程复用 QTcpSocket 发送 WatchScreen Packet
   → 工作线程接收并解码 PNG
   → GUI 线程接收 QImage 并刷新画面
+  → WatchWindow 按最高约 30 FPS 调度下一帧
 ```
 
-同一时刻只允许一帧处于请求中，上一帧完成后才会发送下一帧，避免慢网络下积压请求。
+同一时刻只允许一帧处于请求中，上一帧完成后才会调度下一帧，避免慢网络下积压请求。
+如果一帧处理达到 33 ms，下一帧会立即开始；否则只等待 33 ms 中的剩余时间。因此实际帧率
+取 30 FPS 上限与当前截图、编码、网络和解码能力中的较低值。
 `m_watchPending` 只表示当前是否有一帧正在等待结果，不表示监控窗口或长连接是否开启；
 一帧成功、失败或超时后会恢复为 `false`，关闭监控时也会立即清除。
 

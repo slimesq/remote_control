@@ -1,5 +1,7 @@
 #include "client/ControlConnectionWorker.h"
 
+#include "common/Packet.h"
+
 #include <QTcpSocket>
 #include <QTimer>
 
@@ -57,13 +59,12 @@ void ControlConnectionWorker::closeConnection()
 {
     this->m_queue.clear();
     this->m_activeCommand.reset();
-    this->m_timeoutTimer->stop();
     this->resetSocket();
 }
 
 void ControlConnectionWorker::shutdown()
 {
-    this->m_shuttingDown = true;
+    this->m_state = ConnectionState::ShuttingDown;
     this->closeConnection();
 }
 
@@ -101,9 +102,10 @@ void ControlConnectionWorker::sendHandshake()
 
 void ControlConnectionWorker::sendNext()
 {
-    if (!this->m_handshakeComplete || this->m_activeCommand.has_value() || this->m_queue.isEmpty())
+    if (this->m_state != ConnectionState::Ready || this->m_activeCommand.has_value() ||
+        this->m_queue.isEmpty())
     {
-        if (this->m_handshakeComplete && !this->m_activeCommand.has_value() &&
+        if (this->m_state == ConnectionState::Ready && !this->m_activeCommand.has_value() &&
             this->m_queue.isEmpty())
         {
             this->m_timeoutTimer->stop();
@@ -125,7 +127,7 @@ void ControlConnectionWorker::sendNext()
 
 void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, PendingCommand _command)
 {
-    if (this->m_shuttingDown)
+    if (this->m_state == ConnectionState::ShuttingDown)
     {
         return;
     }
@@ -171,6 +173,7 @@ void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, Pendi
     }
     else if (this->m_socket->state() == QAbstractSocket::UnconnectedState)
     {
+        this->m_state = ConnectionState::Connecting;
         this->m_socket->connectToHost(this->m_host, this->m_port);
         this->m_timeoutTimer->start();
     }
@@ -178,6 +181,7 @@ void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, Pendi
 
 void ControlConnectionWorker::onConnected()
 {
+    this->m_state = ConnectionState::Handshaking;
     this->sendHandshake();
 }
 
@@ -199,8 +203,8 @@ void ControlConnectionWorker::onReadyRead()
         }
 
         QString message;
-        bool const success{remote_control::parseStatusPayload(response->payload, true, &message)};
-        if (!this->m_handshakeComplete)
+        bool const success{remote_control::parseStatusPayload(response->payload, &message)};
+        if (this->m_state == ConnectionState::Handshaking)
         {
             if (response->command != remote_control::Command::ControlChannel || !success)
             {
@@ -208,12 +212,12 @@ void ControlConnectionWorker::onReadyRead()
                                                 : message);
                 return;
             }
-            this->m_handshakeComplete = true;
+            this->m_state = ConnectionState::Ready;
             this->sendNext();
             continue;
         }
 
-        if (!this->m_activeCommand.has_value() ||
+        if (this->m_state != ConnectionState::Ready || !this->m_activeCommand.has_value() ||
             response->command != this->m_activeCommand->command)
         {
             this->failAll(tr("The remote control channel returned an unexpected response."));
@@ -244,8 +248,12 @@ void ControlConnectionWorker::onReadyRead()
 void ControlConnectionWorker::onDisconnected()
 {
     this->m_buffer.clear();
-    this->m_handshakeComplete = false;
-    if (!this->m_shuttingDown && (this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
+    if (this->m_state == ConnectionState::ShuttingDown)
+    {
+        return;
+    }
+    this->m_state = ConnectionState::Disconnected;
+    if (this->m_activeCommand.has_value() || !this->m_queue.isEmpty())
     {
         this->failAll(tr("The remote control connection closed unexpectedly."));
     }
@@ -254,7 +262,8 @@ void ControlConnectionWorker::onDisconnected()
 void ControlConnectionWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 {
     static_cast<void>(_error);
-    if (!this->m_shuttingDown && (this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
+    if (this->m_state != ConnectionState::ShuttingDown &&
+        (this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
     {
         this->failAll(this->m_socket->errorString());
     }
@@ -262,9 +271,10 @@ void ControlConnectionWorker::onErrorOccurred(QAbstractSocket::SocketError _erro
 
 void ControlConnectionWorker::onTimeout()
 {
-    if (!this->m_shuttingDown &&
-        (!this->m_handshakeComplete || this->m_activeCommand.has_value() ||
-         !this->m_queue.isEmpty()))
+    bool const connectionPending{this->m_state == ConnectionState::Connecting ||
+                                 this->m_state == ConnectionState::Handshaking};
+    if (this->m_state != ConnectionState::ShuttingDown &&
+        (connectionPending || this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
     {
         this->failAll(tr("The remote control request timed out."));
     }
@@ -292,7 +302,10 @@ void ControlConnectionWorker::failAll(QString const& _message)
 
 void ControlConnectionWorker::resetSocket()
 {
-    this->m_handshakeComplete = false;
+    if (this->m_state != ConnectionState::ShuttingDown)
+    {
+        this->m_state = ConnectionState::Disconnected;
+    }
     this->m_timeoutTimer->stop();
     this->m_buffer.clear();
     if (!this->m_socket)

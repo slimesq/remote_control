@@ -166,9 +166,40 @@ bool testUtf8StatusRoundTrip()
     QString const expectedMessage{QStringLiteral("操作失败：文件不存在")};
     QByteArray const payload{remote_control::makeStatusPayload(false, expectedMessage)};
     QString parsedMessage;
-    bool const success{remote_control::parseStatusPayload(payload, true, &parsedMessage)};
+    bool const success{remote_control::parseStatusPayload(payload, &parsedMessage)};
     return expect(!success && parsedMessage == expectedMessage,
                   "UTF-8 status message should round-trip");
+}
+
+/**
+ * @brief Verifies status-code encoding and rejection of unknown values.
+ * @return true when all status-code cases pass; otherwise false.
+ */
+bool testStatusCodes()
+{
+    constexpr char UnknownStatusByte{2};
+    QByteArray const successPayload{remote_control::makeStatusPayload(true)};
+    QByteArray const failurePayload{remote_control::makeStatusPayload(false)};
+    QByteArray const unknownPayload{1, UnknownStatusByte};
+
+    bool passed{true};
+    passed &= expect(!successPayload.isEmpty() &&
+                         static_cast<quint8>(successPayload.front()) ==
+                             static_cast<quint8>(remote_control::StatusCode::Success),
+                     "success payload should use StatusCode::Success");
+    passed &= expect(!failurePayload.isEmpty() &&
+                         static_cast<quint8>(failurePayload.front()) ==
+                             static_cast<quint8>(remote_control::StatusCode::Failure),
+                     "failure payload should use StatusCode::Failure");
+    passed &= expect(remote_control::parseStatusPayload(successPayload),
+                     "StatusCode::Success should parse as success");
+    passed &= expect(!remote_control::parseStatusPayload(failurePayload),
+                     "StatusCode::Failure should parse as failure");
+    passed &= expect(!remote_control::parseStatusPayload(unknownPayload),
+                     "unknown status codes should not be treated as success");
+    passed &= expect(!remote_control::parseStatusPayload({}),
+                     "an empty status payload should be rejected");
+    return passed;
 }
 
 }  // namespace
@@ -185,6 +216,7 @@ int main()
     passed &= testUtf8FileEntryRoundTrip();
     passed &= testInvalidFileEntryPayload();
     passed &= testUtf8StatusRoundTrip();
+    passed &= testStatusCodes();
 
     std::cout << (passed ? "PROTOCOL TESTS PASSED" : "PROTOCOL TESTS FAILED") << std::endl;
     return passed ? EXIT_SUCCESS : EXIT_FAILURE;

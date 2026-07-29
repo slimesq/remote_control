@@ -1,5 +1,7 @@
 #include "client/WatchConnectionWorker.h"
 
+#include "common/Packet.h"
+
 #include <QTcpSocket>
 #include <QTimer>
 
@@ -24,7 +26,7 @@ WatchConnectionWorker::~WatchConnectionWorker()
 
 void WatchConnectionWorker::requestFrame(QString const& _host, quint16 _port, quint64 _generation)
 {
-    if (this->m_shuttingDown || this->m_framePending)
+    if (this->m_state == WatchState::ShuttingDown || this->m_state == WatchState::FramePending)
     {
         return;
     }
@@ -44,7 +46,7 @@ void WatchConnectionWorker::requestFrame(QString const& _host, quint16 _port, qu
     }
 
     this->m_generation = _generation;
-    this->m_framePending = true;
+    this->m_state = WatchState::FramePending;
     this->m_timeoutTimer->start();
     this->ensureSocket();
     if (this->m_socket->state() == QAbstractSocket::ConnectedState)
@@ -59,21 +61,12 @@ void WatchConnectionWorker::requestFrame(QString const& _host, quint16 _port, qu
 
 void WatchConnectionWorker::closeConnection()
 {
-    bool const hadPendingRequest{this->m_framePending};
-    quint64 const generation{this->m_generation};
-    this->m_framePending = false;
-    this->m_timeoutTimer->stop();
-    this->resetSocket();
-    if (hadPendingRequest)
-    {
-        emit this->requestFinished(generation);
-    }
+    this->closeConnectionAndSetState(WatchState::Idle);
 }
 
 void WatchConnectionWorker::shutdown()
 {
-    this->m_shuttingDown = true;
-    this->closeConnection();
+    this->closeConnectionAndSetState(WatchState::ShuttingDown);
 }
 
 void WatchConnectionWorker::ensureSocket()
@@ -94,7 +87,7 @@ void WatchConnectionWorker::ensureSocket()
 
 void WatchConnectionWorker::sendFrameRequest()
 {
-    if (!this->m_framePending || !this->m_socket ||
+    if (this->m_state != WatchState::FramePending || !this->m_socket ||
         this->m_socket->state() != QAbstractSocket::ConnectedState)
     {
         return;
@@ -127,7 +120,8 @@ void WatchConnectionWorker::onReadyRead()
     {
         return;
     }
-    if (!this->m_framePending || packet->command != remote_control::Command::WatchScreen)
+    if (this->m_state != WatchState::FramePending ||
+        packet->command != remote_control::Command::WatchScreen)
     {
         this->failRequest(tr("The remote monitor returned an unexpected response."), true);
         return;
@@ -140,7 +134,7 @@ void WatchConnectionWorker::onReadyRead()
         return;
     }
 
-    this->m_framePending = false;
+    this->m_state = WatchState::Idle;
     this->m_timeoutTimer->stop();
     emit this->frameReady(this->m_generation, image);
     emit this->requestFinished(this->m_generation);
@@ -149,7 +143,7 @@ void WatchConnectionWorker::onReadyRead()
 void WatchConnectionWorker::onDisconnected()
 {
     this->m_buffer.clear();
-    if (this->m_framePending && !this->m_shuttingDown)
+    if (this->m_state == WatchState::FramePending)
     {
         this->failRequest(tr("The remote monitor connection closed unexpectedly."), false);
     }
@@ -158,7 +152,7 @@ void WatchConnectionWorker::onDisconnected()
 void WatchConnectionWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 {
     static_cast<void>(_error);
-    if (this->m_framePending && !this->m_shuttingDown)
+    if (this->m_state == WatchState::FramePending)
     {
         this->failRequest(this->m_socket->errorString(), true);
     }
@@ -166,7 +160,7 @@ void WatchConnectionWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 
 void WatchConnectionWorker::onTimeout()
 {
-    if (this->m_framePending)
+    if (this->m_state == WatchState::FramePending)
     {
         this->failRequest(tr("The remote screen request timed out."), true);
     }
@@ -174,12 +168,12 @@ void WatchConnectionWorker::onTimeout()
 
 void WatchConnectionWorker::failRequest(QString const& _message, bool _abortConnection)
 {
-    if (!this->m_framePending)
+    if (this->m_state != WatchState::FramePending)
     {
         return;
     }
 
-    this->m_framePending = false;
+    this->m_state = WatchState::Idle;
     this->m_timeoutTimer->stop();
     if (_abortConnection && this->m_socket)
     {
@@ -188,6 +182,19 @@ void WatchConnectionWorker::failRequest(QString const& _message, bool _abortConn
     }
     emit this->failed(this->m_generation, _message);
     emit this->requestFinished(this->m_generation);
+}
+
+void WatchConnectionWorker::closeConnectionAndSetState(WatchState _nextState)
+{
+    bool const hadPendingRequest{this->m_state == WatchState::FramePending};
+    quint64 const generation{this->m_generation};
+    this->m_state = _nextState;
+    this->m_timeoutTimer->stop();
+    this->resetSocket();
+    if (hadPendingRequest)
+    {
+        emit this->requestFinished(generation);
+    }
 }
 
 void WatchConnectionWorker::resetSocket()

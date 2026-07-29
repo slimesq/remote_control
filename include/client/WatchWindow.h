@@ -3,6 +3,7 @@
 #include "common/Protocol.h"
 
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QImage>
 #include <memory>
 
@@ -107,7 +108,7 @@ private:
     bool m_hasPendingMoveEvent{false};
 };
 
-/** @brief Hosts the live remote screen view and periodic frame requests. */
+/** @brief Hosts the live remote screen view and completion-driven frame requests. */
 class WatchWindow : public QDialog
 {
 public:
@@ -123,7 +124,7 @@ public:
 
 protected:
     /**
-     * @brief Starts periodic frame requests when the window appears.
+     * @brief Starts completion-driven frame requests when the window appears.
      * @param _event Show event supplied by Qt.
      */
     void showEvent(QShowEvent* _event) override;
@@ -135,8 +136,15 @@ protected:
     void closeEvent(QCloseEvent* _event) override;
 
 private:
+    /** @brief Starts one frame request and records its start time. */
+    void requestNextFrame();
+
+    /** @brief Schedules the next frame within the configured frame-rate limit. */
+    void scheduleNextFrame();
+
     RemoteClient* m_client{nullptr};
     RemoteScreenWidget* m_screenWidget{nullptr};
     std::unique_ptr<Ui::WatchWindow> m_ui;
-    QTimer* m_timer{nullptr};
+    QTimer* m_frameRequestTimer{nullptr};
+    QElapsedTimer m_frameRequestElapsed;
 };

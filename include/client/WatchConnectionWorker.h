@@ -1,8 +1,7 @@
 #pragma once
 
-#include "common/Packet.h"
-
 #include <QAbstractSocket>
+#include <QByteArray>
 #include <QImage>
 #include <QObject>
 #include <QString>
@@ -59,6 +58,14 @@ signals:
     void requestFinished(quint64 _generation);
 
 private:
+    /** @brief Lifecycle states of the reusable monitor worker. */
+    enum class WatchState
+    {
+        Idle,          ///< No frame request is outstanding.
+        FramePending,  ///< One frame request is awaiting a response.
+        ShuttingDown,  ///< The worker is releasing resources before thread exit.
+    };
+
     /** @brief Creates the thread-owned socket on first use. */
     void ensureSocket();
 
@@ -90,6 +97,12 @@ private:
      */
     void failRequest(QString const& _message, bool _abortConnection);
 
+    /**
+     * @brief Closes the socket and moves the worker to a specified state.
+     * @param _nextState State entered after pending work is cancelled.
+     */
+    void closeConnectionAndSetState(WatchState _nextState);
+
     /** @brief Destroys the socket and clears buffered protocol data. */
     void resetSocket();
 
@@ -99,6 +112,5 @@ private:
     quint16 m_port{0};
     quint64 m_generation{0};
     QByteArray m_buffer;
-    bool m_framePending{false};
-    bool m_shuttingDown{false};
+    WatchState m_state{WatchState::Idle};
 };
