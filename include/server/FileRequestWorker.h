@@ -76,6 +76,6 @@ private:
     /** @brief Closes and schedules deletion of the active request socket. */
     void releaseSocket();
 
-    std::atomic_bool m_stopping{false};
-    QTcpSocket* m_socket{nullptr};
+    std::atomic_bool m_stopping{false};  ///< Cross-thread cooperative shutdown flag.
+    QTcpSocket* m_socket{nullptr};       ///< Socket owned for the duration of the active request.
 };

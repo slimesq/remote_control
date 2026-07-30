@@ -41,15 +41,15 @@ private:
      */
     void showError(QString const& _title, QString const& _message);
 
-    RemoteServer* m_server{nullptr};
-    QSystemTrayIcon* m_trayIcon{nullptr};
-    QMenu* m_menu{nullptr};
-    QAction* m_statusAction{nullptr};
-    QAction* m_adminAction{nullptr};
-    QAction* m_startupInstallAction{nullptr};
-    QAction* m_startupRemoveAction{nullptr};
-    QAction* m_lockAction{nullptr};
-    QAction* m_unlockAction{nullptr};
-    QAction* m_lockTestAction{nullptr};
-    QAction* m_quitAction{nullptr};
+    RemoteServer* m_server{nullptr};       ///< Non-owning server controlled by the tray interface.
+    QSystemTrayIcon* m_trayIcon{nullptr};  ///< Parent-owned system tray icon.
+    QMenu* m_menu{nullptr};                ///< Context menu released with this controller.
+    QAction* m_statusAction{nullptr};      ///< Read-only server status action.
+    QAction* m_adminAction{nullptr};       ///< Restarts the server with elevation.
+    QAction* m_startupInstallAction{nullptr};  ///< Enables startup for the current user.
+    QAction* m_startupRemoveAction{nullptr};   ///< Disables startup for the current user.
+    QAction* m_lockAction{nullptr};            ///< Locks the local machine simulation.
+    QAction* m_unlockAction{nullptr};          ///< Unlocks the local machine simulation.
+    QAction* m_lockTestAction{nullptr};        ///< Starts a timed lock test.
+    QAction* m_quitAction{nullptr};            ///< Exits the server application.
 };

@@ -54,7 +54,7 @@ private:
      */
     [[nodiscard]] bool invokeLockOperation(bool _lock) const;
 
-    QTcpSocket* m_socket{nullptr};
-    CommandService* m_commandService{nullptr};
-    QByteArray m_buffer;
+    QTcpSocket* m_socket{nullptr};  ///< Persistent control socket owned by this thread object.
+    CommandService* m_commandService{nullptr};  ///< Non-owning GUI-thread command service.
+    QByteArray m_buffer;  ///< Bytes waiting to form complete control-request packets.
 };

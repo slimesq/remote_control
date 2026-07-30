@@ -55,6 +55,6 @@ protected:
     void keyPressEvent(QKeyEvent* _event) override;
 
 private:
-    std::unique_ptr<Ui::LockWindow> m_ui;
-    bool m_locked{false};
+    std::unique_ptr<Ui::LockWindow> m_ui;  ///< Generated lock-window user interface.
+    bool m_locked{false};                  ///< Whether the simulated lock is currently active.
 };

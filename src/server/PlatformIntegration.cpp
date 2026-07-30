@@ -97,7 +97,7 @@ bool PlatformIntegration::sendGlobalMouseEvent(QPoint const& _position,
     // 1. Handle move-only events without constructing native input records.
     if (_button == remote_control::MouseButton::None)
     {
-        if (_action != remote_control::MouseAction::Click)
+        if (_action != remote_control::MouseAction::Move)
         {
             return false;
         }
@@ -134,6 +134,9 @@ bool PlatformIntegration::sendGlobalMouseEvent(QPoint const& _position,
         case remote_control::MouseAction::Release:
             flags[flagCount++] = upFlag;
             break;
+        case remote_control::MouseAction::Move:
+        default:
+            return false;
     }
 
     // 3. Move the cursor before injecting the corresponding native button records.

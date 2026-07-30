@@ -42,6 +42,7 @@ enum class MouseAction : quint16
     DoubleClick = 1,
     Press = 2,
     Release = 3,
+    Move = 4,
 };
 
 /** @brief Mouse buttons represented by a forwarded mouse event. */
@@ -57,34 +58,20 @@ enum class MouseButton : quint16
 /** @brief Fixed-layout mouse event payload transferred over the wire. */
 struct MouseEventPacket
 {
-    /** @brief Encoded MouseAction value. */
-    quint16 action{static_cast<quint16>(MouseAction::Click)};
-
-    /** @brief Encoded MouseButton value. */
-    quint16 button{static_cast<quint16>(MouseButton::None)};
-
-    /** @brief Absolute remote screen x-coordinate. */
-    qint32 x{0};
-
-    /** @brief Absolute remote screen y-coordinate. */
-    qint32 y{0};
+    quint16 action{static_cast<quint16>(MouseAction::Move)};  ///< Encoded mouse action.
+    quint16 button{static_cast<quint16>(MouseButton::None)};  ///< Encoded mouse button.
+    qint32 x{0};  ///< Absolute remote-screen x-coordinate.
+    qint32 y{0};  ///< Absolute remote-screen y-coordinate.
 };
 #pragma pack(pop)
 
 /** @brief Describes one entry in a streamed remote directory listing. */
 struct FileEntry
 {
-    /** @brief Whether the directory request or payload is invalid. */
-    bool isInvalid{false};
-
-    /** @brief Whether the entry represents a directory. */
-    bool isDirectory{false};
-
-    /** @brief Whether another entry packet follows this entry. */
-    bool hasNext{true};
-
-    /** @brief File or directory name without the parent path. */
-    QString fileName;
+    bool isInvalid{false};    ///< Whether the directory request or payload is invalid.
+    bool isDirectory{false};  ///< Whether this entry represents a directory.
+    bool hasNext{true};       ///< Whether another entry packet follows this entry.
+    QString fileName;         ///< File or directory name without the parent path.
 
     /**
      * @brief Serializes this entry into its protocol payload.

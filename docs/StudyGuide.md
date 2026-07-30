@@ -10,7 +10,7 @@
 RemoteControlClient
     ├─ 轻量短连接 ─► RemoteSession ─► CommandService
     ├─ 文件任务连接 ─► FileRequestPool ─► FileRequestWorker ─► 目录/下载/删除
-    ├─ 控制长连接 ─► ControlStreamThread ─► 鼠标/锁定/解锁
+    ├─ 控制长连接 ─► ControlStreamThread ─► 鼠标/模拟锁定/解锁
     └─ 监控长连接 ─► WatchStreamThread ─► 截图
 
 RemoteControlProtocolTests ──► 独立验证 Packet 和 Protocol
@@ -89,7 +89,9 @@ RemoteControlSmokeTest ──────► 使用相同协议端到端验证�
 界面。每个 `PendingRequest` 实例只处理一次逻辑请求；目录列表虽然可能返回多个数据包，
 仍然属于同一次请求。
 
-`requestDrives()`、`requestDirectory()`、`runFile()` 和 `deleteFile()` 复用同一个 `PendingRequest` 模型。其中目录请求的服务端响应由多个 `FileEntry` 包和一个 `hasNext == false` 的终止包组成。
+`requestDrives()`、`requestDirectory()`、`runFile()` 和 `deleteFile()` 复用同一个
+`PendingRequest` 模型。其中目录请求的服务端响应由多个 `FileEntry` 包和一个
+`hasNext == false` 的终止包组成。
 
 `PendingRequest::onReadyRead()` 将 `QTcpSocket::readAll()` 返回的新数据追加到持久缓冲区，
 再循环调用 `Packet::tryParse()`。完整数据包会立即分派处理；不完整数据会留在缓冲区，
@@ -172,7 +174,14 @@ WatchWindow 立即请求首帧
 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务，析构时使用
 `Qt::BlockingQueuedConnection` 先让 worker 停止，再退出并等待线程。
 
-鼠标、锁定和解锁使用单独的 `ControlConnectionWorker` 长连接。控制命令一次只发送一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用 `DownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每次最多读取 64 KiB 并立即发送，不会把整个文件保存在内存中。
+`MainWindow` 和 `WatchWindow` 都属于主 GUI 线程，共用 `QApplication::exec()` 启动的同一个
+GUI 事件循环。创建多个窗口不会自动创建多个 GUI 线程；只有上述 worker object 在各自的
+`QThread` 中处理网络和文件任务。
+
+鼠标、模拟锁定和解锁使用单独的 `ControlConnectionWorker` 长连接。控制命令一次只发送
+一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用
+`DownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每次最多读取 64 KiB 并
+立即发送，不会把整个文件保存在内存中。
 
 ### 第四步：服务端
 
@@ -195,7 +204,16 @@ RemoteServer 接受连接
   → 序列化响应 Packet
 ```
 
-`CommandService` 处理连接测试、磁盘列表、打开文件，以及必须在 GUI 线程操作的锁屏窗口。`RemoteSession` 会把目录、下载和删除请求连同 socket 转交给 `FileRequestPool`。线程池按需创建 2 至 4 个常驻线程，空闲的 `FileRequestWorker` 会继续处理排队任务，最多排队 64 个文件请求。`ControlChannel` 和 `WatchScreen` 分别转交给独立的持久连接线程，每类最多 4 条连接，避免截图数据阻塞鼠标输入。鼠标注入在控制线程中执行；锁定和解锁则以 queued invocation 投递给 GUI 线程。
+`CommandService` 处理连接测试、磁盘列表、打开文件，以及必须在 GUI 线程操作的模拟锁定
+窗口。`RemoteSession` 会把目录、下载和删除请求连同 socket 转交给
+`FileRequestPool`。线程池按需创建 2 至 4 个常驻线程，空闲的 `FileRequestWorker` 会
+继续处理排队任务，最多排队 64 个文件请求。`ControlChannel` 和 `WatchScreen` 分别转交
+给独立的持久连接线程，每类最多 4 条连接，避免截图数据阻塞鼠标输入。鼠标注入在控制
+线程中执行；模拟锁定和解锁则以 queued invocation 投递给 GUI 线程。
+
+这里的“锁定”不是 Windows 会话锁定。`LockWindow` 显示全屏覆盖窗口，
+`PlatformIntegration` 隐藏任务栏并限制鼠标，`Ctrl+C` 可用于紧急解锁。因此它适合演示
+远程控制流程，但不能作为操作系统安全边界。
 
 ### 第五步：公共协议
 
@@ -213,6 +231,41 @@ RemoteServer 接受连接
 - `Packet::tryParse()`：处理 TCP 字节流中的完整数据包
 - 包头、长度、命令、payload 和 16 位累加校验值的布局
 - 最大 64 MiB payload、非法长度恢复、半包和连续包处理
+
+所有多字节整数均按 little-endian 编码。一个 Packet 的布局如下：
+
+| 偏移 | 大小 | 字段 | 说明 |
+| --- | --- | --- | --- |
+| 0 | 2 bytes | `Header` | 固定为 `0xFEFF`，线上字节为 `FF FE` |
+| 2 | 4 bytes | `Length` | `Command + Payload + Checksum` 的总长度，即 payload 大小加 4 |
+| 6 | 2 bytes | `Command` | `Command` 枚举值 |
+| 8 | N bytes | `Payload` | 命令数据，最大 64 MiB |
+| 8 + N | 2 bytes | `Checksum` | payload 每个字节相加后保留低 16 位 |
+
+通用状态 payload 的第一个字节是 `StatusCode`，其余字节是可选的 UTF-8 消息：
+
+| 值 | 枚举 | 含义 |
+| --- | --- | --- |
+| `0` | `StatusCode::Failure` | 命令失败 |
+| `1` | `StatusCode::Success` | 命令成功 |
+| 其他值 | 未定义 | 按失败处理 |
+
+`FileEntry` payload 使用下面的顺序：
+
+| 字段 | 大小 | 说明 |
+| --- | --- | --- |
+| Version | 1 byte | 当前固定为 `1` |
+| Flags | 1 byte | bit 0：无效；bit 1：目录；bit 2：后续还有条目 |
+| NameLength | 4 bytes | UTF-8 名称的字节数 |
+| FileName | N bytes | 不包含父目录的 UTF-8 文件名 |
+
+鼠标 payload 是一个 12-byte 的 `MouseEventPacket`：`action`、`button`、`x`、`y`。纯移动
+事件使用 `MouseAction::Move + MouseButton::None`，明确表示“只更新坐标，不产生按键”；
+点击、按下、释放和双击则需要具体的鼠标按钮。
+
+`ControlChannel` 建立持久连接时先发送一个无 payload 的握手 Packet。服务端接管该 socket
+并返回 `ControlChannel` 状态响应后，客户端才开始按顺序发送鼠标、模拟锁定和解锁命令；
+每条命令收到状态响应后才会发送下一条。
 
 修改协议时，客户端、服务端、协议测试和 smoke test 必须同步验证。
 
@@ -264,7 +317,8 @@ RemoteServer 接受连接
 ## 5. 调试建议
 
 - 客户端和服务端分别启动调试时，确认端口一致。
-- 遇到 Qt 类型跳转失败，先确认 `build/msvc-debug/compile_commands.json` 存在，再重启 `clangd`。
+- 遇到 Qt 类型跳转失败，先确认项目根目录的 `compile_commands.json` 存在且来自当前构建
+  目录，再重启 `clangd`。
 - 遇到 `ui_*.h` 缺失，先完成一次构建；这些头文件由 `AUTOUIC` 生成。
 - 修改 `Q_OBJECT` 类后出现链接错误时，检查头文件是否包含在 CMake target 中，并重新运行 configure。
 - 修改公共协议后先运行 CTest 中的 `RemoteControlProtocolTests`，再启动服务端运行 `RemoteControlSmokeTest`。

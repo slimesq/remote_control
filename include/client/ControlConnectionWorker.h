@@ -96,10 +96,11 @@ private:
 
     struct PendingCommand
     {
-        remote_control::Command command{remote_control::Command::MouseEvent};
-        QByteArray payload;
-        QString context;
-        quint64 generation{0};
+        remote_control::Command command{
+            remote_control::Command::MouseEvent};  ///< Protocol operation to send.
+        QByteArray payload;                        ///< Command-specific protocol payload.
+        QString context;                           ///< Client-side label returned with the result.
+        quint64 generation{0};                     ///< Control-session generation at enqueue time.
     };
 
     /** @brief Creates and connects the thread-owned socket on first use. */
@@ -153,12 +154,12 @@ private:
      */
     [[nodiscard]] static bool isMoveOnly(PendingCommand const& _command);
 
-    QTcpSocket* m_socket{nullptr};
-    QTimer* m_timeoutTimer{nullptr};
-    QString m_host;
-    quint16 m_port{0};
-    QByteArray m_buffer;
-    QQueue<PendingCommand> m_queue;
-    std::optional<PendingCommand> m_activeCommand;
-    ConnectionState m_state{ConnectionState::Disconnected};
+    QTcpSocket* m_socket{nullptr};    ///< Persistent socket owned by the worker thread.
+    QTimer* m_timeoutTimer{nullptr};  ///< Deadline timer for connection and command responses.
+    QString m_host;                   ///< Host name or address of the active endpoint.
+    quint16 m_port{0};                ///< TCP port of the active endpoint.
+    QByteArray m_buffer;              ///< Bytes waiting to form complete response packets.
+    QQueue<PendingCommand> m_queue;   ///< Commands waiting to be sent in order.
+    std::optional<PendingCommand> m_activeCommand;  ///< Sent command awaiting its response.
+    ConnectionState m_state{ConnectionState::Disconnected};  ///< Current connection lifecycle.
 };

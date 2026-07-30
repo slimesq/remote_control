@@ -2,7 +2,14 @@
 
 返回 [项目主页](../README.md)。
 
-日常只需要使用 `Build.ps1` 和 `Run.ps1`。`internal` 目录存放 Qt 查找、运行环境和可执行文件定位等公共实现，不应直接执行。
+脚本入口如下：
+
+| 文件 | 作用 | 是否日常使用 |
+| --- | --- | --- |
+| `Build.ps1` | 配置、编译、部署和清理项目 | 是 |
+| `Run.ps1` | 运行客户端、服务端或 smoke test | 是 |
+| `Setup-CMakeUserPresets.ps1` | 检测本机工具链并生成 CMake user presets | 通常由构建脚本自动调用 |
+| `internal/` | 保存 Qt 查找、运行环境和程序定位等公共实现 | 不直接运行 |
 
 ## 环境要求
 
@@ -30,7 +37,9 @@ $env:QTDIR = "C:\Qt\6.8.3\msvc2022_64"
 | `msvc-debug` | `build/msvc-debug` | MSVC x64 + Ninja Debug |
 | `msvc-release` | `build/msvc-release` | MSVC x64 + Ninja Release |
 
-`CMakePresets.json` 只保存可共享的生成器、构建类型和目标规则，不包含本机绝对路径。`CMakeUserPresets.json` 保存当前计算机的 Qt Kit、Ninja、MSVC 和 Windows SDK 路径，并且已被 `.gitignore` 忽略。
+`CMakePresets.json` 只保存可共享的生成器、构建类型和目标规则，不包含本机绝对路径。
+`CMakeUserPresets.json` 保存当前计算机的 Qt Kit、Ninja、MSVC 和 Windows SDK 路径，
+并且已被 `.gitignore` 忽略。
 
 首次克隆项目或本机工具链发生变化时，运行初始化脚本：
 
@@ -38,9 +47,13 @@ $env:QTDIR = "C:\Qt\6.8.3\msvc2022_64"
 .\scripts\Setup-CMakeUserPresets.ps1
 ```
 
-脚本通过 `vswhere` 和 `VsDevCmd.bat` 自动查找 MSVC 与 Windows SDK，并自动查找 Qt 和 Ninja，然后生成 `CMakeUserPresets.json`。VS Code 中也可以运行任务 `CMake: Setup Local Presets`。
+脚本通过 `vswhere` 和 `VsDevCmd.bat` 自动查找 MSVC 与 Windows SDK，并自动查找 Qt 和
+Ninja，然后生成 `CMakeUserPresets.json`。VS Code 中也可以运行任务
+`CMake: Setup Local Presets`。
 
-VS Code 的 CMake Tools 应选择 `local-msvc-debug` 或 `local-msvc-release` Configure Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Build Preset。换电脑时只需重新运行初始化脚本，共享文件不需要改动。
+VS Code 的 CMake Tools 应选择 `local-msvc-debug` 或 `local-msvc-release` Configure
+Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Build Preset。
+换电脑时只需重新运行初始化脚本，共享文件不需要改动。
 
 构建时可以选择完整项目、客户端或服务端：
 
@@ -131,7 +144,11 @@ build/msvc-debug
 build/msvc-release
 ```
 
-`build` 操作会在本地 preset 发生刷新或构建目录尚未配置时先执行 configure，然后并行编译。首次构建、工具链刷新、缺少必要 Qt DLL 或显式指定 `-Deploy` 时，脚本才会调用 `windeployqt`；普通增量构建不会重复部署。当前配置生成的 `compile_commands.json` 会同步到项目根目录供 `clangd` 使用。
+`build` 操作会在本地 preset 发生刷新或构建目录尚未配置时先执行 configure，然后并行
+编译。首次构建、工具链刷新、缺少必要 Qt DLL 或显式指定 `-Deploy` 时，脚本才会调用
+`windeployqt`；普通增量构建不会重复部署。脚本会先检查当前 `windeployqt` 支持的参数，
+因此可同时适配 Qt 5.15 和 Qt 6。当前配置生成的 `compile_commands.json` 会同步到项目
+根目录供 `clangd` 使用。
 
 ## Run.ps1
 
@@ -167,9 +184,11 @@ build/msvc-release
 | `-ServerHost` | 服务端地址，默认为 `127.0.0.1` |
 | `-Port` | 服务端端口，默认为 `9527` |
 | `-NoTray` | 仅对 `server` 生效，让服务端以无托盘模式运行 |
-| `-LockTestSeconds` | 仅对 `server` 生效；锁定指定秒数后自动解锁，服务端继续运行 |
+| `-LockTestSeconds` | 仅对 `server` 生效；模拟锁定指定秒数后自动解锁，服务端继续运行 |
 
-`Run.ps1` 不提供启动项安装、启动项删除和 UAC 提权参数。这些维护操作需要直接运行构建目录中的 `RemoteControlServer.exe`，具体参数见项目根目录 [README](../README.md) 的“命令行配置”。
+`Run.ps1` 不提供启动项安装、启动项删除和 UAC 提权参数。这些维护操作需要直接运行构建
+目录中的 `RemoteControlServer.exe`，具体参数见项目根目录 [README](../README.md)
+的“命令行配置”。
 
 ## 测试
 
@@ -187,6 +206,7 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 ```
 
 smoke test 会验证截图、控制通道、文件执行、下载和删除，只应连接受控测试环境。
+其中鼠标控制和文件操作会对服务端产生实际影响。
 
 ## VS Code 和 Qt Creator
 

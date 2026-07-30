@@ -81,9 +81,9 @@ private:
     /** @brief Stops and joins all active server worker threads. */
     void shutdownWorkers();
 
-    QTcpServer* m_server{nullptr};
-    CommandService* m_commandService{nullptr};
-    FileRequestPool* m_fileRequestPool{nullptr};
-    QList<WatchStreamThread*> m_watchThreads;
-    QList<ControlStreamThread*> m_controlThreads;
+    QTcpServer* m_server{nullptr};                 ///< Parent-owned TCP listener.
+    CommandService* m_commandService{nullptr};     ///< Parent-owned command execution service.
+    FileRequestPool* m_fileRequestPool{nullptr};   ///< Parent-owned reusable file-worker pool.
+    QList<WatchStreamThread*> m_watchThreads;      ///< Active remote-screen stream threads.
+    QList<ControlStreamThread*> m_controlThreads;  ///< Active remote-control stream threads.
 };

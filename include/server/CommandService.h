@@ -78,6 +78,6 @@ private:
      */
     [[nodiscard]] QList<remote_control::Packet> handleTestConnection() const;
 
-    std::unique_ptr<LockWindow> m_lockWindow;
-    QTimer* m_lockTestTimer{nullptr};
+    std::unique_ptr<LockWindow> m_lockWindow;  ///< Full-screen window used for simulated locking.
+    QTimer* m_lockTestTimer{nullptr};          ///< Ends an active timed lock test.
 };

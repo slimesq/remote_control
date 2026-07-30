@@ -38,8 +38,8 @@ public:
 private:
     struct PendingRequest
     {
-        QTcpSocket* socket{nullptr};
-        remote_control::Packet request;
+        QTcpSocket* socket{nullptr};     ///< Socket awaiting transfer to a worker thread.
+        remote_control::Packet request;  ///< Initial file request already parsed from the socket.
     };
 
     /**
@@ -61,10 +61,10 @@ private:
      */
     void onRequestFinished(FileRequestWorker* _worker);
 
-    int m_maxThreadCount{1};
-    bool m_stopping{false};
-    QList<QThread*> m_threads;
-    QList<FileRequestWorker*> m_workers;
-    QList<FileRequestWorker*> m_idleWorkers;
-    QQueue<PendingRequest> m_pendingRequests;
+    int m_maxThreadCount{1};              ///< Maximum number of reusable file-worker threads.
+    bool m_stopping{false};               ///< Whether shutdown has begun and new work is rejected.
+    QList<QThread*> m_threads;            ///< Parent-owned threads created by this pool.
+    QList<FileRequestWorker*> m_workers;  ///< All workers managed by the pool.
+    QList<FileRequestWorker*> m_idleWorkers;   ///< Workers currently available for dispatch.
+    QQueue<PendingRequest> m_pendingRequests;  ///< Requests waiting for an available worker.
 };

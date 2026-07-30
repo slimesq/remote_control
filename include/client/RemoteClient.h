@@ -196,16 +196,15 @@ private:
      */
     [[nodiscard]] bool isEndpointGenerationCurrent(quint64 _generation) const noexcept;
 
-    QString m_host{QStringLiteral("127.0.0.1")};
-    quint16 m_port{remote_control::DefaultServerPort};
-    QThread* m_watchThread{nullptr};
-    WatchConnectionWorker* m_watchWorker{nullptr};
-    QThread* m_controlThread{nullptr};
-    ControlConnectionWorker* m_controlWorker{nullptr};
-    QThread* m_downloadThread{nullptr};
-    DownloadWorker* m_downloadWorker{nullptr};
-    /** @brief GUI-side admission flag kept set until the worker reports frame-request completion. */
-    bool m_watchPending{false};
+    QString m_host{QStringLiteral("127.0.0.1")};        ///< Configured server host name or address.
+    quint16 m_port{remote_control::DefaultServerPort};  ///< Configured server TCP port.
+    QThread* m_watchThread{nullptr};                    ///< Thread for remote-screen network I/O.
+    WatchConnectionWorker* m_watchWorker{nullptr};      ///< Persistent screen-stream worker.
+    QThread* m_controlThread{nullptr};                  ///< Thread for remote-control network I/O.
+    ControlConnectionWorker* m_controlWorker{nullptr};  ///< Persistent input-control worker.
+    QThread* m_downloadThread{nullptr};                 ///< Thread for file-download network I/O.
+    DownloadWorker* m_downloadWorker{nullptr};          ///< Worker that performs one download.
+    bool m_watchPending{false};       ///< Whether one frame request is awaiting completion.
     quint64 m_endpointGeneration{0};  ///< Discards results from obsolete endpoints.
     quint64 m_watchGeneration{0};     ///< Discards results from stopped monitor sessions.
     quint64 m_controlGeneration{0};   ///< Discards results from stopped control sessions.

@@ -46,10 +46,10 @@ private:
     /** @brief Restarts the connection idle timeout. */
     void restartIdleTimer();
 
-    QTcpSocket* m_socket{nullptr};
-    RemoteServer* m_server{nullptr};
-    CommandService* m_commandService{nullptr};
-    QTimer* m_idleTimer{nullptr};
-    QByteArray m_buffer;
-    bool m_handled{false};
+    QTcpSocket* m_socket{nullptr};    ///< Accepted socket until ownership is transferred.
+    RemoteServer* m_server{nullptr};  ///< Non-owning server used to route persistent sessions.
+    CommandService* m_commandService{nullptr};  ///< Non-owning short-command service.
+    QTimer* m_idleTimer{nullptr};  ///< Rejects sessions that do not provide a complete request.
+    QByteArray m_buffer;           ///< Bytes waiting to form the initial request packet.
+    bool m_handled{false};         ///< Whether the initial request has been dispatched.
 };

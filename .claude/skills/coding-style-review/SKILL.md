@@ -167,6 +167,8 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
   a return tag to constructors, destructors, or `void` functions.
 - Add concise class/interface documentation for client/server components. Do not repeat a function
   name in prose when the declaration is already self-explanatory.
+- Document every project class and struct data member with a concise English trailing `///<`
+  comment.
 - Use `///<` only for concise trailing documentation of enum values or data members. Use a preceding
   Doxygen block when the explanation needs multiple lines or tags.
 - Explain intent, ownership, protocol layout, platform constraints, and surprising behavior rather

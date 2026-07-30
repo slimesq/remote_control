@@ -106,11 +106,11 @@ private:
     /** @brief Destroys the socket and clears buffered protocol data. */
     void resetSocket();
 
-    QTcpSocket* m_socket{nullptr};
-    QTimer* m_timeoutTimer{nullptr};
-    QString m_host;
-    quint16 m_port{0};
-    quint64 m_generation{0};
-    QByteArray m_buffer;
-    WatchState m_state{WatchState::Idle};
+    QTcpSocket* m_socket{nullptr};         ///< Persistent remote-screen socket.
+    QTimer* m_timeoutTimer{nullptr};       ///< Deadline timer for the active frame request.
+    QString m_host;                        ///< Host name or address of the active endpoint.
+    quint16 m_port{0};                     ///< TCP port of the active endpoint.
+    quint64 m_generation{0};               ///< Monitor-session generation of the active request.
+    QByteArray m_buffer;                   ///< Bytes waiting to form a complete frame packet.
+    WatchState m_state{WatchState::Idle};  ///< Current screen-request lifecycle.
 };

@@ -13,14 +13,11 @@ namespace remote_control
 class Packet
 {
 public:
-    /** @brief Byte-order-aware marker placed at the beginning of every packet. */
-    static constexpr quint16 Header{0xFEFF};
+    static constexpr quint16 Header{0xFEFF};  ///< Marker at the beginning of every packet.
 
-    /** @brief Maximum accepted payload size in bytes. */
-    static constexpr int MaximumPayloadSize{64 * 1024 * 1024};
+    static constexpr int MaximumPayloadSize{64 * 1024 * 1024};  ///< Maximum payload size in bytes.
 
-    /** @brief Maximum serialized packet size in bytes. */
-    static constexpr int MaximumSerializedSize{MaximumPayloadSize + 10};
+    static constexpr int MaximumSerializedSize{MaximumPayloadSize + 10};  ///< Packet byte limit.
 
     /** @brief Creates an empty connection-test packet. */
     Packet() = default;
@@ -51,11 +48,8 @@ public:
      */
     [[nodiscard]] static std::optional<Packet> tryParse(QByteArray& _buffer);
 
-    /** @brief Command encoded by this packet. */
-    Command command{Command::TestConnection};
-
-    /** @brief Command-specific payload bytes. */
-    QByteArray payload;
+    Command command{Command::TestConnection};  ///< Command encoded by this packet.
+    QByteArray payload;                        ///< Command-specific payload bytes.
 };
 
 }  // namespace remote_control

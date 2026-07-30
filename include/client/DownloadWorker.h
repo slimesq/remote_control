@@ -105,15 +105,15 @@ private:
     /** @brief Destroys the active socket and clears protocol buffering. */
     void resetSocket();
 
-    QTcpSocket* m_socket{nullptr};
-    QTimer* m_timeoutTimer{nullptr};
-    std::unique_ptr<QSaveFile> m_file;
-    QString m_host;
-    quint16 m_port{0};
-    QString m_remotePath;
-    QString m_localPath;
-    QByteArray m_buffer;
-    qint64 m_expectedBytes{-1};
-    qint64 m_receivedBytes{0};
-    DownloadState m_state{DownloadState::Idle};
+    QTcpSocket* m_socket{nullptr};      ///< Socket dedicated to the active download.
+    QTimer* m_timeoutTimer{nullptr};    ///< Detects inactivity during the active download.
+    std::unique_ptr<QSaveFile> m_file;  ///< Transactional local output file.
+    QString m_host;                     ///< Server host name or address.
+    quint16 m_port{0};                  ///< Server TCP port.
+    QString m_remotePath;               ///< Remote source path being downloaded.
+    QString m_localPath;                ///< Local destination path being written.
+    QByteArray m_buffer;                ///< Bytes waiting to form complete response packets.
+    qint64 m_expectedBytes{-1};         ///< Declared file size, or -1 before the size header.
+    qint64 m_receivedBytes{0};          ///< Number of file bytes written locally.
+    DownloadState m_state{DownloadState::Idle};  ///< Current download lifecycle.
 };

@@ -151,13 +151,13 @@ private:
      */
     [[nodiscard]] static QString joinPath(QString const& _basePath, QString const& _fileName);
 
-    RemoteClient* m_client{nullptr};
-    WatchWindow* m_watchWindow{nullptr};
-    std::unique_ptr<Ui::MainWindow> m_ui;
-    QProgressDialog* m_downloadProgress{nullptr};
-    QString m_activeDownloadPath;
-    bool m_connectionVerified{false};
-    bool m_connectionTestPending{false};
-    bool m_driveListPending{false};
-    bool m_fileCommandPending{false};
+    RemoteClient* m_client{nullptr};       ///< Client facade shared by all window operations.
+    WatchWindow* m_watchWindow{nullptr};   ///< Lazily created remote-screen dialog.
+    std::unique_ptr<Ui::MainWindow> m_ui;  ///< Generated main-window user interface.
+    QProgressDialog* m_downloadProgress{nullptr};  ///< Progress dialog for the active download.
+    QString m_activeDownloadPath;                  ///< Remote path of the active download.
+    bool m_connectionVerified{false};              ///< Whether the current endpoint was tested.
+    bool m_connectionTestPending{false};           ///< Whether a connection test is outstanding.
+    bool m_driveListPending{false};                ///< Whether a drive-list request is outstanding.
+    bool m_fileCommandPending{false};              ///< Whether a file command is outstanding.
 };

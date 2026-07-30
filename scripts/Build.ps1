@@ -142,7 +142,11 @@ if ($shouldDeploy) {
 
     $deployTargets = @("RemoteControlClient.exe", "RemoteControlServer.exe", "RemoteControlSmokeTest.exe", "RemoteControlProtocolTests.exe")
     $executables = @(Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -Recurse -File | Where-Object Name -In $deployTargets)
-    $deployArguments = @("--no-translations", "--compiler-runtime", "--no-system-dxc-compiler")
+    $deployArguments = @("--no-translations", "--compiler-runtime")
+    $deployHelp = (& $deployTool --help 2>&1 | Out-String)
+    if ($deployHelp -match "--no-system-dxc-compiler") {
+        $deployArguments += "--no-system-dxc-compiler"
+    }
     $deployArguments += @($executables | Select-Object -ExpandProperty FullName)
     if ($executables.Count -gt 0) {
         & $deployTool @deployArguments

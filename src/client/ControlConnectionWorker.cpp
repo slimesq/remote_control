@@ -329,5 +329,6 @@ bool ControlConnectionWorker::isMoveOnly(PendingCommand const& _command)
 
     remote_control::MouseEventPacket event{};
     std::memcpy(&event, _command.payload.constData(), sizeof(event));
-    return event.button == static_cast<quint16>(remote_control::MouseButton::None);
+    return event.action == static_cast<quint16>(remote_control::MouseAction::Move) &&
+        event.button == static_cast<quint16>(remote_control::MouseButton::None);
 }

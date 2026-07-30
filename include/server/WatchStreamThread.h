@@ -39,6 +39,6 @@ private:
      */
     [[nodiscard]] bool sendFrame();
 
-    QTcpSocket* m_socket{nullptr};
-    QByteArray m_buffer;
+    QTcpSocket* m_socket{nullptr};  ///< Persistent watch socket owned by this thread object.
+    QByteArray m_buffer;            ///< Bytes waiting to form complete frame-request packets.
 };

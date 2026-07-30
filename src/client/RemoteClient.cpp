@@ -202,7 +202,7 @@ private:
         }
 
     private:
-        PendingRequest* m_request{nullptr};
+        PendingRequest* m_request{nullptr};  ///< Request whose callback depth is guarded.
     };
 
     /** @brief Deletes the request after active callbacks have unwound. */

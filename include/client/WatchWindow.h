@@ -102,10 +102,10 @@ private:
     [[nodiscard]] static remote_control::MouseButton toProtocolButton(
         Qt::MouseButton _button) noexcept;
 
-    QImage m_image;
-    QTimer* m_moveEventTimer{nullptr};
-    remote_control::MouseEventPacket m_pendingMoveEvent;
-    bool m_hasPendingMoveEvent{false};
+    QImage m_image;                     ///< Most recently received remote-screen image.
+    QTimer* m_moveEventTimer{nullptr};  ///< Rate-limits emitted cursor-move events.
+    remote_control::MouseEventPacket m_pendingMoveEvent;  ///< Latest unsent cursor position.
+    bool m_hasPendingMoveEvent{false};  ///< Whether a cursor position is waiting to be emitted.
 };
 
 /** @brief Hosts the live remote screen view and completion-driven frame requests. */
@@ -142,9 +142,9 @@ private:
     /** @brief Schedules the next frame within the configured frame-rate limit. */
     void scheduleNextFrame();
 
-    RemoteClient* m_client{nullptr};
-    RemoteScreenWidget* m_screenWidget{nullptr};
-    std::unique_ptr<Ui::WatchWindow> m_ui;
-    QTimer* m_frameRequestTimer{nullptr};
-    QElapsedTimer m_frameRequestElapsed;
+    RemoteClient* m_client{nullptr};  ///< Non-owning client used for screen and control requests.
+    RemoteScreenWidget* m_screenWidget{nullptr};  ///< Child widget that displays remote frames.
+    std::unique_ptr<Ui::WatchWindow> m_ui;        ///< Generated monitor-window user interface.
+    QTimer* m_frameRequestTimer{nullptr};  ///< Schedules the next bounded-rate frame request.
+    QElapsedTimer m_frameRequestElapsed;   ///< Measures time spent on the current frame.
 };

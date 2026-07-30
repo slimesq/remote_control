@@ -89,7 +89,7 @@ void RemoteScreenWidget::mouseReleaseEvent(QMouseEvent* _event)
 void RemoteScreenWidget::mouseMoveEvent(QMouseEvent* _event)
 {
     // Keep only the latest cursor position; press/release/double-click still go out immediately.
-    this->m_pendingMoveEvent = this->makeMouseEvent(remote_control::MouseAction::Click,
+    this->m_pendingMoveEvent = this->makeMouseEvent(remote_control::MouseAction::Move,
                                                     remote_control::MouseButton::None,
                                                     mouseEventPosition(_event));
     this->m_hasPendingMoveEvent = true;
@@ -130,8 +130,8 @@ QPoint RemoteScreenWidget::mapToRemote(QPoint const& _point) const
     {
         return {};
     }
-    int const remoteX{_point.x() * this->m_image.width() / qMax(1, width())};
-    int const remoteY{_point.y() * this->m_image.height() / qMax(1, height())};
+    int const remoteX{_point.x() * this->m_image.width() / width()};
+    int const remoteY{_point.y() * this->m_image.height() / height()};
     return {remoteX, remoteY};
 }
 

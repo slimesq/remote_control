@@ -27,8 +27,8 @@ constexpr int ExpectedControlResponseCount{ControlCommandCount + 1};
 
 struct ResponseBundle
 {
-    QList<remote_control::Packet> packets;
-    QString error;
+    QList<remote_control::Packet> packets;  ///< Response packets collected from the connection.
+    QString error;                          ///< Network or protocol error, if any.
 };
 
 /**
@@ -704,7 +704,7 @@ int main(int argc, char* argv[])
 
     QPoint const cursorPosition{QCursor::pos()};
     remote_control::MouseEventPacket mouseEvent;
-    mouseEvent.action = static_cast<quint16>(remote_control::MouseAction::Click);
+    mouseEvent.action = static_cast<quint16>(remote_control::MouseAction::Move);
     mouseEvent.button = static_cast<quint16>(remote_control::MouseButton::None);
     mouseEvent.x = cursorPosition.x();
     mouseEvent.y = cursorPosition.y();
