@@ -425,6 +425,8 @@ RemoteClient::RemoteClient(QObject* _parent)
 
     this->m_watchWorker->moveToThread(this->m_watchThread);
     connect(this->m_watchThread, &QThread::finished, this->m_watchWorker, &QObject::deleteLater);
+    // Generation checks suppress callbacks emitted by a request that belonged to an old endpoint
+    // or to a watch stream that has since been stopped and restarted.
     connect(this->m_watchWorker,
             &WatchConnectionWorker::frameReady,
             this,
@@ -457,6 +459,7 @@ RemoteClient::RemoteClient(QObject* _parent)
     this->m_controlWorker->moveToThread(this->m_controlThread);
     connect(
         this->m_controlThread, &QThread::finished, this->m_controlWorker, &QObject::deleteLater);
+    // Control results are forwarded only while they belong to the current persistent channel.
     connect(this->m_controlWorker,
             &ControlConnectionWorker::commandCompleted,
             this,
@@ -533,6 +536,7 @@ RemoteClient::~RemoteClient()
 
 void RemoteClient::setEndpoint(QString const& _host, quint16 _port)
 {
+    // Changing either endpoint component invalidates every persistent stream and its callbacks.
     bool const endpointChanged{this->m_host != _host || this->m_port != _port};
     bool const watchRequestWasPending{endpointChanged && this->hasPendingWatchFrame()};
     if (endpointChanged)
@@ -626,6 +630,7 @@ void RemoteClient::downloadFile(QString const& _remotePath, QString const& _loca
 
 void RemoteClient::requestWatchFrame()
 {
+    // The scheduler must wait for requestFinished before starting another frame request.
     if (this->hasPendingWatchFrame())
     {
         return;

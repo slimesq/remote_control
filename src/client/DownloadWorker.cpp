@@ -37,6 +37,7 @@ void DownloadWorker::startDownload(QString const& _host,
                                    QString const& _remotePath,
                                    QString const& _localPath)
 {
+    // Shutdown is terminal; a live worker also serializes downloads onto one socket and save file.
     if (this->m_state == DownloadState::ShuttingDown)
     {
         return;
@@ -57,6 +58,7 @@ void DownloadWorker::startDownload(QString const& _host,
     this->m_buffer.clear();
     this->m_state = DownloadState::Downloading;
 
+    // All endpoint and path components are required before creating any transport resources.
     if (this->m_host.isEmpty() || this->m_port == 0 || this->m_remotePath.isEmpty() ||
         this->m_localPath.isEmpty())
     {
@@ -85,6 +87,7 @@ void DownloadWorker::startDownload(QString const& _host,
 
 void DownloadWorker::shutdown()
 {
+    // Preserve whether an incomplete temporary file must be cancelled before entering shutdown.
     bool const wasDownloading{this->m_state == DownloadState::Downloading};
     this->m_state = DownloadState::ShuttingDown;
     if (wasDownloading)
@@ -122,6 +125,7 @@ void DownloadWorker::onReadyRead()
         return;
     }
 
+    // processPacket() may complete or fail the transfer, so re-check state before parsing more.
     while (this->m_state == DownloadState::Downloading)
     {
         auto const packet{remote_control::Packet::tryParse(this->m_buffer)};
@@ -140,6 +144,7 @@ void DownloadWorker::onReadyRead()
 
 void DownloadWorker::onDisconnected()
 {
+    // A disconnect after completion or during shutdown must not produce a second result.
     if (this->m_state == DownloadState::Downloading)
     {
         this->fail(tr("Download was interrupted."));
@@ -236,6 +241,7 @@ void DownloadWorker::completeSuccessfully()
 
 void DownloadWorker::fail(QString const& _message)
 {
+    // Timeout, socket, protocol, and file errors can converge here; report completion only once.
     if (this->m_state != DownloadState::Downloading)
     {
         return;

@@ -26,6 +26,7 @@ WatchConnectionWorker::~WatchConnectionWorker()
 
 void WatchConnectionWorker::requestFrame(QString const& _host, quint16 _port, quint64 _generation)
 {
+    // Shutdown is terminal, and the worker permits only one frame request at a time.
     if (this->m_state == WatchState::ShuttingDown || this->m_state == WatchState::FramePending)
     {
         return;
@@ -38,6 +39,7 @@ void WatchConnectionWorker::requestFrame(QString const& _host, quint16 _port, qu
     }
 
     QString const resolvedHost{_host.trimmed()};
+    // A changed endpoint invalidates the reusable socket and any bytes buffered from its peer.
     if (this->m_host != resolvedHost || this->m_port != _port)
     {
         this->resetSocket();
@@ -87,6 +89,7 @@ void WatchConnectionWorker::ensureSocket()
 
 void WatchConnectionWorker::sendFrameRequest()
 {
+    // Sending is valid only for the outstanding request on a fully connected socket.
     if (this->m_state != WatchState::FramePending || !this->m_socket ||
         this->m_socket->state() != QAbstractSocket::ConnectedState)
     {
@@ -120,6 +123,7 @@ void WatchConnectionWorker::onReadyRead()
     {
         return;
     }
+    // A frame is accepted only as the response to the single request currently in flight.
     if (this->m_state != WatchState::FramePending ||
         packet->command != remote_control::Command::WatchScreen)
     {
@@ -143,6 +147,7 @@ void WatchConnectionWorker::onReadyRead()
 void WatchConnectionWorker::onDisconnected()
 {
     this->m_buffer.clear();
+    // A disconnect fails only an outstanding frame; idle and intentional closes are silent.
     if (this->m_state == WatchState::FramePending)
     {
         this->failRequest(tr("The remote monitor connection closed unexpectedly."), false);
@@ -168,6 +173,7 @@ void WatchConnectionWorker::onTimeout()
 
 void WatchConnectionWorker::failRequest(QString const& _message, bool _abortConnection)
 {
+    // Make failure completion idempotent across timeout, error, and disconnect callbacks.
     if (this->m_state != WatchState::FramePending)
     {
         return;
@@ -186,6 +192,7 @@ void WatchConnectionWorker::failRequest(QString const& _message, bool _abortConn
 
 void WatchConnectionWorker::closeConnectionAndSetState(WatchState _nextState)
 {
+    // Capture completion responsibility before replacing FramePending with the requested state.
     bool const hadPendingRequest{this->m_state == WatchState::FramePending};
     quint64 const generation{this->m_generation};
     this->m_state = _nextState;

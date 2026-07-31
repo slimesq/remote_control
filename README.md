@@ -183,6 +183,7 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 
 - [构建与运行脚本](scripts/README.md)
 - [项目代码学习指南](docs/StudyGuide.md)
+- [客户端系统架构图](docs/ClientArchitecture.md)
 
 ## 安全提示
 

@@ -65,6 +65,8 @@ void RemoteSession::onDisconnected()
 
 void RemoteSession::onIdleTimeout()
 {
+    // Ownership may already have moved to a stream or file worker; only this session's unhandled
+    // socket is eligible for the short-request timeout.
     if (this->m_handled)
     {
         return;
@@ -74,6 +76,7 @@ void RemoteSession::onIdleTimeout()
 
 void RemoteSession::processPacket(remote_control::Packet const& _packet)
 {
+    // Each accepted socket is classified once; later buffered packets belong to the new owner.
     if (this->m_handled)
     {
         return;
@@ -102,6 +105,7 @@ void RemoteSession::processPacket(remote_control::Packet const& _packet)
         return;
     }
 
+    // Potentially blocking file operations leave the session thread and share the bounded pool.
     if (_packet.command == remote_control::Command::ListDirectory ||
         _packet.command == remote_control::Command::DownloadFile ||
         _packet.command == remote_control::Command::DeleteFile)

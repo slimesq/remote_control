@@ -27,12 +27,15 @@ FileRequestPool::~FileRequestPool()
 
 bool FileRequestPool::submit(QTcpSocket* _socket, remote_control::Packet _request)
 {
+    // Reject work when the pool cannot own it safely: shutdown has begun, no socket was supplied,
+    // or the bounded backlog is full.
     if (this->m_stopping || !_socket || this->m_pendingRequests.size() >= MaxQueuedFileRequests)
     {
         return false;
     }
 
     PendingRequest pending{_socket, std::move(_request)};
+    // Prefer an existing idle worker, then grow to the configured limit, then queue the request.
     if (!this->m_idleWorkers.isEmpty())
     {
         this->dispatch(this->m_idleWorkers.takeLast(), std::move(pending));
@@ -111,6 +114,7 @@ void FileRequestPool::dispatch(FileRequestWorker* _worker, PendingRequest _pendi
 
 void FileRequestPool::onRequestFinished(FileRequestWorker* _worker)
 {
+    // A worker completing during shutdown must not be reused or returned to the idle collection.
     if (this->m_stopping)
     {
         return;

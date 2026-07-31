@@ -126,6 +126,7 @@ remote_control::MouseEventPacket RemoteScreenWidget::makeMouseEvent(
 
 QPoint RemoteScreenWidget::mapToRemote(QPoint const& _point) const
 {
+    // Coordinate scaling requires both a decoded source frame and non-zero widget dimensions.
     if (this->m_image.isNull() || width() <= 0 || height() <= 0)
     {
         return {};
@@ -224,6 +225,7 @@ void WatchWindow::scheduleNextFrame()
         return;
     }
 
+    // Account for request latency and wait only for the remainder of the minimum frame interval.
     qint64 const elapsedMs{this->m_frameRequestElapsed.isValid()
                                ? this->m_frameRequestElapsed.elapsed()
                                : MinimumWatchFrameIntervalMs};

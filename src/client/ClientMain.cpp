@@ -36,6 +36,7 @@ int main(int _argc, char* _argv[])
 
     bool portIsValid{false};
     quint16 const requestedServerPort{parser.value(serverPortOption).toUShort(&portIsValid)};
+    // Fall back when parsing fails or when the parsed value is the reserved invalid port zero.
     quint16 const resolvedServerPort{portIsValid && requestedServerPort != 0
                                          ? requestedServerPort
                                          : remote_control::DefaultServerPort};

@@ -45,6 +45,8 @@ void ControlConnectionWorker::sendCommand(QString const& _host,
                                           QString const& _context,
                                           quint64 _generation)
 {
+    // The persistent control channel accepts only state-changing machine commands here;
+    // mouse input uses sendMouseEvent(), and all other commands use short-lived requests.
     if (_command != remote_control::Command::LockMachine &&
         _command != remote_control::Command::UnlockMachine)
     {
@@ -102,9 +104,12 @@ void ControlConnectionWorker::sendHandshake()
 
 void ControlConnectionWorker::sendNext()
 {
+    // Send only after the handshake completes, when no command awaits a response and the
+    // queue has work.
     if (this->m_state != ConnectionState::Ready || this->m_activeCommand.has_value() ||
         this->m_queue.isEmpty())
     {
+        // A ready connection with no active or queued command is fully idle and needs no timeout.
         if (this->m_state == ConnectionState::Ready && !this->m_activeCommand.has_value() &&
             this->m_queue.isEmpty())
         {
@@ -127,6 +132,7 @@ void ControlConnectionWorker::sendNext()
 
 void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, PendingCommand _command)
 {
+    // Shutdown is terminal: accepting work here could recreate a socket during thread teardown.
     if (this->m_state == ConnectionState::ShuttingDown)
     {
         return;
@@ -142,6 +148,7 @@ void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, Pendi
         return;
     }
 
+    // Commands queued for different endpoints must never share a connection or response stream.
     if (this->m_host != host || this->m_port != _port)
     {
         this->closeConnection();
@@ -149,6 +156,8 @@ void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, Pendi
         this->m_port = _port;
     }
 
+    // Consecutive move-only events are interchangeable; retain only the newest cursor position
+    // without crossing a button event or another ordered command.
     if (isMoveOnly(_command) && !this->m_queue.isEmpty() && isMoveOnly(this->m_queue.back()))
     {
         this->m_queue.back() = std::move(_command);
@@ -167,6 +176,7 @@ void ControlConnectionWorker::enqueue(QString const& _host, quint16 _port, Pendi
     }
 
     this->ensureSocket();
+    // Reuse an established channel immediately, or initiate exactly one new connection.
     if (this->m_socket->state() == QAbstractSocket::ConnectedState)
     {
         this->sendNext();
@@ -206,6 +216,7 @@ void ControlConnectionWorker::onReadyRead()
         bool const success{remote_control::parseStatusPayload(response->payload, &message)};
         if (this->m_state == ConnectionState::Handshaking)
         {
+            // Only a successful ControlChannel status packet can promote the connection to Ready.
             if (response->command != remote_control::Command::ControlChannel || !success)
             {
                 this->failAll(message.isEmpty() ? tr("The control-channel handshake failed.")
@@ -217,6 +228,7 @@ void ControlConnectionWorker::onReadyRead()
             continue;
         }
 
+        // Ready responses are strictly one-for-one and must match the command currently in flight.
         if (this->m_state != ConnectionState::Ready || !this->m_activeCommand.has_value() ||
             response->command != this->m_activeCommand->command)
         {
@@ -248,11 +260,13 @@ void ControlConnectionWorker::onReadyRead()
 void ControlConnectionWorker::onDisconnected()
 {
     this->m_buffer.clear();
+    // An intentional shutdown owns cleanup and must not report queued work as a transport failure.
     if (this->m_state == ConnectionState::ShuttingDown)
     {
         return;
     }
     this->m_state = ConnectionState::Disconnected;
+    // An idle disconnect is harmless; only unfinished work needs a failure notification.
     if (this->m_activeCommand.has_value() || !this->m_queue.isEmpty())
     {
         this->failAll(tr("The remote control connection closed unexpectedly."));
@@ -262,6 +276,7 @@ void ControlConnectionWorker::onDisconnected()
 void ControlConnectionWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 {
     static_cast<void>(_error);
+    // Ignore teardown and idle-socket errors because neither represents a failed user command.
     if (this->m_state != ConnectionState::ShuttingDown &&
         (this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
     {
@@ -273,6 +288,7 @@ void ControlConnectionWorker::onTimeout()
 {
     bool const connectionPending{this->m_state == ConnectionState::Connecting ||
                                  this->m_state == ConnectionState::Handshaking};
+    // The timer covers connection setup, handshake, and command responses, but not idle periods.
     if (this->m_state != ConnectionState::ShuttingDown &&
         (connectionPending || this->m_activeCommand.has_value() || !this->m_queue.isEmpty()))
     {
@@ -302,6 +318,7 @@ void ControlConnectionWorker::failAll(QString const& _message)
 
 void ControlConnectionWorker::resetSocket()
 {
+    // Preserve the terminal shutdown state; every other reset returns the worker to Disconnected.
     if (this->m_state != ConnectionState::ShuttingDown)
     {
         this->m_state = ConnectionState::Disconnected;
@@ -321,6 +338,7 @@ void ControlConnectionWorker::resetSocket()
 
 bool ControlConnectionWorker::isMoveOnly(PendingCommand const& _command)
 {
+    // Inspect payload fields only after both the command kind and fixed packet size are validated.
     if (_command.command != remote_control::Command::MouseEvent ||
         _command.payload.size() != static_cast<int>(sizeof(remote_control::MouseEventPacket)))
     {

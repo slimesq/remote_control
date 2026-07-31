@@ -24,6 +24,9 @@ RemoteControlSmokeTest ──────► 使用相同协议端到端验证�
 | `src/server`、`include/server` | TCP 监听、会话管理和命令执行 |
 | `src/tests` | 协议测试与端到端 smoke test |
 
+客户端组件、线程边界和网络通道的完整关系参见
+[客户端系统架构](ClientArchitecture.md)。
+
 ## 2. 推荐阅读顺序
 
 ### 第一步：程序入口

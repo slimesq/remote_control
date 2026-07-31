@@ -155,6 +155,8 @@ QProgressDialog* MainWindow::ensureDownloadProgressDialog()
 
 void MainWindow::updateActionState()
 {
+    // Derive UI permissions from endpoint validity, verification, selection, and mutually
+    // exclusive operation states so no action can race an incompatible request.
     bool const hasEndpoint{!this->m_ui->hostEdit->text().trimmed().isEmpty() &&
                            this->m_ui->portSpin->value() > 0};
     bool const canBrowseRemote{hasEndpoint && this->m_connectionVerified};
@@ -539,6 +541,8 @@ void MainWindow::wireSignals()
                    QString const&,
                    bool _success,
                    QString const& _message) {
+                // Successful mouse moves are high-frequency noise; surface failures and all
+                // explicit lock-state command results.
                 if (_command != remote_control::Command::MouseEvent || !_success)
                 {
                     statusBar()->showMessage(
@@ -561,6 +565,7 @@ void MainWindow::requestSelectedDirectory(QTreeWidgetItem* _item, bool _forceRef
     }
 
     DirectoryLoadState const state{directoryLoadState(_item)};
+    // Normal navigation consumes a usable cache; an explicit refresh always contacts the server.
     if (!_forceRefresh && hasDirectoryCache(state))
     {
         this->displayDirectoryFiles(
@@ -570,6 +575,7 @@ void MainWindow::requestSelectedDirectory(QTreeWidgetItem* _item, bool _forceRef
         return;
     }
 
+    // Loading and Refreshing already own a request for this item, so do not submit a duplicate.
     if (isDirectoryRequestActive(state))
     {
         return;
@@ -588,6 +594,7 @@ void MainWindow::displayDirectoryFiles(QString const& _path,
     this->m_ui->fileTable->setRowCount(0);
     for (remote_control::FileEntry const& entry : _entries)
     {
+        // The file table excludes protocol errors, directories, and navigation pseudo-entries.
         if (entry.isInvalid || entry.isDirectory || entry.fileName == "." || entry.fileName == "..")
         {
             continue;
@@ -652,6 +659,7 @@ void MainWindow::updateDirectoryView(QString const& _path,
 
     for (remote_control::FileEntry const& entry : _entries)
     {
+        // Navigation pseudo-entries do not represent child nodes in the remote directory tree.
         if (entry.fileName == "." || entry.fileName == "..")
         {
             continue;
@@ -703,6 +711,7 @@ QString MainWindow::normalizeDrive(QString const& _drive)
 QString MainWindow::joinPath(QString const& _basePath, QString const& _fileName)
 {
     QString path{_basePath};
+    // Preserve an existing native or alternate separator; append one only when neither is present.
     if (!path.endsWith('\\') && !path.endsWith('/'))
     {
         path.append('\\');

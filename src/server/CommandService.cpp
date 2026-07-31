@@ -61,6 +61,7 @@ void CommandService::lockLocalMachine()
 {
     bool const wasLocked{this->isLocked()};
     this->m_lockWindow->lockMachine();
+    // Emit only on a real unlocked-to-locked transition, not on idempotent lock requests.
     if (!wasLocked && this->isLocked())
     {
         emit this->lockStateChanged(true);
@@ -72,6 +73,7 @@ void CommandService::unlockLocalMachine()
     this->m_lockTestTimer->stop();
     bool const wasLocked{this->isLocked()};
     this->m_lockWindow->unlockMachine();
+    // Emit only on a real locked-to-unlocked transition.
     if (wasLocked && !this->isLocked())
     {
         emit this->lockStateChanged(false);
@@ -141,6 +143,7 @@ QList<remote_control::Packet> CommandService::handleListDrives() const
 QList<remote_control::Packet> CommandService::handleRunFile(QByteArray const& _payload) const
 {
     QString const path{decodePath(_payload)};
+    // Report one common failure when the target is missing or Windows rejects the launch request.
     if (!QFileInfo::exists(path) || !QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
     {
         return {statusPacket(

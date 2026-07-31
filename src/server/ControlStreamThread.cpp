@@ -83,6 +83,8 @@ void ControlStreamThread::run()
     // Acknowledge the ControlChannel packet that RemoteSession consumed before the handoff.
     QByteArray const handshake{
         statusPacket(remote_control::Command::ControlChannel, true, {}).serialize()};
+    // Enter the persistent event loop only after a valid acknowledgement was queued and no stop
+    // request arrived during channel handoff.
     if (!handshake.isEmpty() && this->m_socket->write(handshake) >= 0 &&
         !this->isInterruptionRequested())
     {
@@ -144,6 +146,7 @@ remote_control::Packet ControlStreamThread::handleRequest(
             _request.command, success, success ? QString{} : tr("Failed to send the mouse event."));
     }
 
+    // Lock-state commands carry no payload; reject both unknown commands and malformed variants.
     if ((_request.command == remote_control::Command::LockMachine ||
          _request.command == remote_control::Command::UnlockMachine) &&
         _request.payload.isEmpty())

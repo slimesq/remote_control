@@ -107,6 +107,7 @@ bool PlatformIntegration::sendGlobalMouseEvent(QPoint const& _position,
     // 2. Translate the protocol action into an ordered set of Windows flags.
     DWORD const downFlag{mouseDownFlag(_button)};
     DWORD const upFlag{mouseUpFlag(_button)};
+    // A supported button must provide both native transitions for every action variant.
     if (downFlag == 0 || upFlag == 0)
     {
         return false;
@@ -192,6 +193,7 @@ QImage PlatformIntegration::capturePrimaryScreen()
 {
     int const width{GetSystemMetrics(SM_CXSCREEN)};
     int const height{GetSystemMetrics(SM_CYSCREEN)};
+    // GDI capture and QImage allocation both require a positive desktop extent.
     if (width <= 0 || height <= 0)
     {
         return {};
@@ -218,6 +220,7 @@ QImage PlatformIntegration::capturePrimaryScreen()
     }
 
     auto const previousObject{SelectObject(memoryDc, bitmap)};
+    // SelectObject has two documented failure representations; both leave the bitmap unusable.
     if (!previousObject || previousObject == HGDI_ERROR)
     {
         DeleteObject(bitmap);
@@ -236,6 +239,7 @@ QImage PlatformIntegration::capturePrimaryScreen()
     bitmapInfo.bmiHeader.biPlanes = 1;
     bitmapInfo.bmiHeader.biBitCount = CaptureBitsPerPixel;
     bitmapInfo.bmiHeader.biCompression = BI_RGB;
+    // Read pixels only when the screen copy and destination image allocation both succeeded.
     int const copiedRows{copied && !image.isNull() ? GetDIBits(memoryDc,
                                                                bitmap,
                                                                0,

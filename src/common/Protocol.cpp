@@ -78,6 +78,8 @@ FileEntry FileEntry::fromPayload(QByteArray const& _payload)
     stream >> nameLength;
 
     qsizetype const remainingBytes{_payload.size() - FileEntryHeaderSize};
+    // Publish an entry only when decoding succeeded, the schema is supported, every flag is
+    // known, and the declared name consumes the payload exactly.
     if (stream.status() != QDataStream::Ok || version != FileEntryPayloadVersion ||
         (flags & static_cast<quint8>(~KnownFlags)) != 0 ||
         nameLength != static_cast<quint32>(remainingBytes))

@@ -93,6 +93,8 @@ bool WatchStreamThread::processAvailableRequests()
         {
             return true;
         }
+        // A persistent watch connection accepts only empty frame requests and remains usable only
+        // while the corresponding frame can be produced and queued.
         if (packet->command != remote_control::Command::WatchScreen || !packet->payload.isEmpty() ||
             !this->sendFrame())
         {
@@ -112,6 +114,7 @@ bool WatchStreamThread::sendFrame()
     QImage const image{PlatformIntegration::capturePrimaryScreen()};
     QByteArray payload;
     QBuffer buffer{&payload};
+    // Any capture, buffer, or encoding failure is represented by an empty frame payload.
     if (image.isNull() || !buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG"))
     {
         payload.clear();

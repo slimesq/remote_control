@@ -104,6 +104,7 @@ ServerTrayController::ServerTrayController(RemoteServer* _server, QObject* _pare
             &QSystemTrayIcon::activated,
             this,
             [this](QSystemTrayIcon::ActivationReason _reason) {
+                // Show status for normal activation gestures, not context-menu or unknown events.
                 if (_reason == QSystemTrayIcon::Trigger || _reason == QSystemTrayIcon::DoubleClick)
                 {
                     this->showInfo(

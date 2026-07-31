@@ -86,6 +86,8 @@ bool FileRequestWorker::streamDirectory(QByteArray const& _payload)
     QString const path{remote_control::decodeUtf8(_payload)};
     QFileInfo const directoryInfo{path};
     QDir const directory{path};
+    // Listing requires an existing readable directory; every other target uses the terminal
+    // invalid-entry response expected by the client.
     if (!directoryInfo.exists() || !directoryInfo.isDir() || !directory.isReadable())
     {
         remote_control::FileEntry invalidEntry;
@@ -136,10 +138,12 @@ bool FileRequestWorker::streamDownload(QByteArray const& _payload)
     while (!file.atEnd() && !this->m_stopping.load())
     {
         QByteArray const chunk{file.read(DownloadChunkSize)};
+        // An empty read is an error only when QFile reports one; EOF is handled by the loop guard.
         if (chunk.isEmpty() && file.error() != QFileDevice::NoError)
         {
             return false;
         }
+        // Never serialize an empty data packet, and stop immediately if the chunk cannot be sent.
         if (!chunk.isEmpty() && !this->writePacket({remote_control::Command::DownloadFile, chunk}))
         {
             return false;
@@ -158,6 +162,8 @@ bool FileRequestWorker::deleteTarget(QByteArray const& _payload)
             remote_control::Command::DeleteFile, false, tr("Target does not exist: %1").arg(path)));
     }
 
+    // Recurse only through real directories; remove symlinks as leaf objects to avoid escaping
+    // the requested subtree.
     bool const success{info.isDir() && !info.isSymLink() ? this->removeRecursively(path)
                                                          : QFile::remove(path)};
     QString const message{success ? tr("Delete completed.")
@@ -188,6 +194,7 @@ bool FileRequestWorker::removeRecursively(QString const& _path)
             return false;
         }
 
+        // Apply the same symlink boundary at every level of the recursive traversal.
         bool const removed{entry.isDir() && !entry.isSymLink()
                                ? this->removeRecursively(entry.absoluteFilePath())
                                : QFile::remove(entry.absoluteFilePath())};
@@ -220,6 +227,7 @@ bool FileRequestWorker::writePacket(remote_control::Packet const& _packet)
 
     QElapsedTimer timer;
     timer.start();
+    // Keep flushing only while bytes remain, the deadline is open, and shutdown has not won.
     while (this->m_socket->bytesToWrite() > 0 && timer.elapsed() < NetworkWriteTimeoutMs)
     {
         if (this->m_stopping.load())
@@ -242,6 +250,7 @@ void FileRequestWorker::releaseSocket()
         this->m_socket->disconnectFromHost();
         QElapsedTimer timer;
         timer.start();
+        // Give queued bytes a bounded graceful-disconnect window unless shutdown cancels it.
         while (this->m_socket->state() != QAbstractSocket::UnconnectedState &&
                timer.elapsed() < NetworkWriteTimeoutMs && !this->m_stopping.load())
         {

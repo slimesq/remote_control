@@ -83,6 +83,7 @@ void LockWindow::focusOutEvent(QFocusEvent* _event)
 
 void LockWindow::keyPressEvent(QKeyEvent* _event)
 {
+    // The local recovery shortcut is active only while this window owns the lock.
     if (this->m_locked && _event->key() == Qt::Key_C && (_event->modifiers() & Qt::ControlModifier))
     {
         this->unlockMachine();

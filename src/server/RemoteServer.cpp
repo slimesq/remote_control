@@ -62,6 +62,7 @@ void RemoteServer::onNewConnection()
 
 void RemoteServer::startWatchStream(QTcpSocket* _socket)
 {
+    // Bound long-lived watch streams independently so they cannot consume all server threads.
     if (this->m_watchThreads.size() >= MaximumWatchConnections)
     {
         _socket->abort();
@@ -80,6 +81,7 @@ void RemoteServer::startWatchStream(QTcpSocket* _socket)
 
 void RemoteServer::startControlStream(QTcpSocket* _socket)
 {
+    // Control channels have their own limit because each channel owns a persistent thread.
     if (this->m_controlThreads.size() >= MaximumControlConnections)
     {
         _socket->abort();
