@@ -1,4 +1,4 @@
-#include "client/DownloadWorker.h"
+#include "client/FileDownloadWorker.h"
 
 #include "common/Packet.h"
 
@@ -16,26 +16,26 @@ constexpr int DownloadInactivityTimeoutMs{15000};
 
 }  // namespace
 
-DownloadWorker::DownloadWorker() : m_timeoutTimer{new QTimer{this}}
+FileDownloadWorker::FileDownloadWorker() : m_timeoutTimer{new QTimer{this}}
 {
     this->m_timeoutTimer->setSingleShot(true);
     this->m_timeoutTimer->setInterval(DownloadInactivityTimeoutMs);
-    QObject::connect(this->m_timeoutTimer, &QTimer::timeout, this, &DownloadWorker::onTimeout);
+    QObject::connect(this->m_timeoutTimer, &QTimer::timeout, this, &FileDownloadWorker::onTimeout);
 }
 
-DownloadWorker::~DownloadWorker()
+FileDownloadWorker::~FileDownloadWorker()
 {
-    if (this->m_file && this->m_file->isOpen())
+    if (this->m_outputFile && this->m_outputFile->isOpen())
     {
-        this->m_file->cancelWriting();
+        this->m_outputFile->cancelWriting();
     }
     this->resetSocket();
 }
 
-void DownloadWorker::startDownload(QString const& _host,
-                                   quint16 _port,
-                                   QString const& _remotePath,
-                                   QString const& _localPath)
+void FileDownloadWorker::startDownload(QString const& _host,
+                                       quint16 _port,
+                                       QString const& _remotePath,
+                                       QString const& _localPath)
 {
     // Shutdown is terminal; a live worker also serializes downloads onto one socket and save file.
     if (this->m_state == DownloadState::ShuttingDown)
@@ -53,8 +53,8 @@ void DownloadWorker::startDownload(QString const& _host,
     this->m_port = _port;
     this->m_remotePath = _remotePath;
     this->m_localPath = _localPath;
-    this->m_expectedBytes = -1;
-    this->m_receivedBytes = 0;
+    this->m_expectedFileSize = -1;
+    this->m_writtenBytes = 0;
     this->m_buffer.clear();
     this->m_state = DownloadState::Downloading;
 
@@ -67,25 +67,27 @@ void DownloadWorker::startDownload(QString const& _host,
     }
 
     // Construct the QObject-backed file in the worker thread that exclusively uses it.
-    this->m_file = std::make_unique<QSaveFile>(this->m_localPath);
-    if (!this->m_file->open(QIODevice::WriteOnly))
+    this->m_outputFile = std::make_unique<QSaveFile>(this->m_localPath);
+    if (!this->m_outputFile->open(QIODevice::WriteOnly))
     {
         this->fail(tr("Unable to write the local file: %1").arg(this->m_localPath));
         return;
     }
 
     this->m_socket = new QTcpSocket{this};
-    QObject::connect(this->m_socket, &QTcpSocket::connected, this, &DownloadWorker::onConnected);
-    QObject::connect(this->m_socket, &QTcpSocket::readyRead, this, &DownloadWorker::onReadyRead);
     QObject::connect(
-        this->m_socket, &QTcpSocket::disconnected, this, &DownloadWorker::onDisconnected);
+        this->m_socket, &QTcpSocket::connected, this, &FileDownloadWorker::onConnected);
     QObject::connect(
-        this->m_socket, &QTcpSocket::errorOccurred, this, &DownloadWorker::onErrorOccurred);
+        this->m_socket, &QTcpSocket::readyRead, this, &FileDownloadWorker::onReadyRead);
+    QObject::connect(
+        this->m_socket, &QTcpSocket::disconnected, this, &FileDownloadWorker::onDisconnected);
+    QObject::connect(
+        this->m_socket, &QTcpSocket::errorOccurred, this, &FileDownloadWorker::onErrorOccurred);
     this->m_timeoutTimer->start();
     this->m_socket->connectToHost(this->m_host, this->m_port);
 }
 
-void DownloadWorker::shutdown()
+void FileDownloadWorker::shutdown()
 {
     // Preserve whether an incomplete temporary file must be cancelled before entering shutdown.
     bool const wasDownloading{this->m_state == DownloadState::Downloading};
@@ -93,16 +95,16 @@ void DownloadWorker::shutdown()
     if (wasDownloading)
     {
         this->m_timeoutTimer->stop();
-        if (this->m_file && this->m_file->isOpen())
+        if (this->m_outputFile && this->m_outputFile->isOpen())
         {
-            this->m_file->cancelWriting();
+            this->m_outputFile->cancelWriting();
         }
-        this->m_file.reset();
+        this->m_outputFile.reset();
     }
     this->resetSocket();
 }
 
-void DownloadWorker::onConnected()
+void FileDownloadWorker::onConnected()
 {
     remote_control::Packet const request{remote_control::Command::DownloadFile,
                                          remote_control::encodeUtf8(this->m_remotePath)};
@@ -115,7 +117,7 @@ void DownloadWorker::onConnected()
     this->m_timeoutTimer->start();
 }
 
-void DownloadWorker::onReadyRead()
+void FileDownloadWorker::onReadyRead()
 {
     this->m_timeoutTimer->start();
     this->m_buffer.append(this->m_socket->readAll());
@@ -142,7 +144,7 @@ void DownloadWorker::onReadyRead()
     }
 }
 
-void DownloadWorker::onDisconnected()
+void FileDownloadWorker::onDisconnected()
 {
     // A disconnect after completion or during shutdown must not produce a second result.
     if (this->m_state == DownloadState::Downloading)
@@ -151,7 +153,7 @@ void DownloadWorker::onDisconnected()
     }
 }
 
-void DownloadWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
+void FileDownloadWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
 {
     static_cast<void>(_error);
     if (this->m_state == DownloadState::Downloading)
@@ -160,7 +162,7 @@ void DownloadWorker::onErrorOccurred(QAbstractSocket::SocketError _error)
     }
 }
 
-void DownloadWorker::onTimeout()
+void FileDownloadWorker::onTimeout()
 {
     if (this->m_state == DownloadState::Downloading)
     {
@@ -168,10 +170,10 @@ void DownloadWorker::onTimeout()
     }
 }
 
-void DownloadWorker::processPacket(QByteArray const& _payload)
+void FileDownloadWorker::processPacket(QByteArray const& _payload)
 {
     // 1. Interpret the first payload as the fixed-width remote file-size header.
-    if (this->m_expectedBytes < 0)
+    if (this->m_expectedFileSize < 0)
     {
         // Reject malformed headers before reading the qint64 size value.
         if (_payload.size() != static_cast<int>(sizeof(qint64)))
@@ -182,15 +184,15 @@ void DownloadWorker::processPacket(QByteArray const& _payload)
 
         QDataStream stream{_payload};
         stream.setByteOrder(QDataStream::LittleEndian);
-        stream >> this->m_expectedBytes;
+        stream >> this->m_expectedFileSize;
         // A negative size reports that the server could not open the requested file.
-        if (this->m_expectedBytes < 0)
+        if (this->m_expectedFileSize < 0)
         {
             this->fail(tr("The remote file cannot be read."));
             return;
         }
         // Complete an empty file immediately because no data packets will follow.
-        if (this->m_expectedBytes == 0)
+        if (this->m_expectedFileSize == 0)
         {
             emit this->progress(this->m_remotePath, 0, 0);
             this->completeSuccessfully();
@@ -199,33 +201,33 @@ void DownloadWorker::processPacket(QByteArray const& _payload)
     }
 
     // 2. Reject data that exceeds the file size declared by the server.
-    if (this->m_receivedBytes + _payload.size() > this->m_expectedBytes)
+    if (this->m_writtenBytes + _payload.size() > this->m_expectedFileSize)
     {
         this->fail(tr("Received more download data than expected."));
         return;
     }
     // 3. Persist the complete payload and reject unavailable or partial writes.
-    if (!this->m_file || this->m_file->write(_payload) != _payload.size())
+    if (!this->m_outputFile || this->m_outputFile->write(_payload) != _payload.size())
     {
         this->fail(tr("Failed to write the local file."));
         return;
     }
 
-    this->m_receivedBytes += _payload.size();
-    emit this->progress(this->m_remotePath, this->m_receivedBytes, this->m_expectedBytes);
+    this->m_writtenBytes += _payload.size();
+    emit this->progress(this->m_remotePath, this->m_writtenBytes, this->m_expectedFileSize);
     // 4. Commit the temporary file after all declared bytes have been received.
-    if (this->m_receivedBytes == this->m_expectedBytes)
+    if (this->m_writtenBytes == this->m_expectedFileSize)
     {
         this->completeSuccessfully();
     }
 }
 
-void DownloadWorker::completeSuccessfully()
+void FileDownloadWorker::completeSuccessfully()
 {
-    if (!this->m_file || !this->m_file->commit())
+    if (!this->m_outputFile || !this->m_outputFile->commit())
     {
-        QString const errorMessage{this->m_file ? this->m_file->errorString()
-                                                : tr("The temporary file is unavailable.")};
+        QString const errorMessage{this->m_outputFile ? this->m_outputFile->errorString()
+                                                      : tr("The temporary file is unavailable.")};
         this->fail(tr("Failed to save the local file: %1").arg(errorMessage));
         return;
     }
@@ -234,12 +236,12 @@ void DownloadWorker::completeSuccessfully()
     QString const localPath{this->m_localPath};
     this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
-    this->m_file.reset();
+    this->m_outputFile.reset();
     this->resetSocket();
     emit this->finished(remotePath, localPath, true, tr("Download completed."));
 }
 
-void DownloadWorker::fail(QString const& _message)
+void FileDownloadWorker::fail(QString const& _message)
 {
     // Timeout, socket, protocol, and file errors can converge here; report completion only once.
     if (this->m_state != DownloadState::Downloading)
@@ -251,16 +253,16 @@ void DownloadWorker::fail(QString const& _message)
     QString const localPath{this->m_localPath};
     this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
-    if (this->m_file && this->m_file->isOpen())
+    if (this->m_outputFile && this->m_outputFile->isOpen())
     {
-        this->m_file->cancelWriting();
+        this->m_outputFile->cancelWriting();
     }
-    this->m_file.reset();
+    this->m_outputFile.reset();
     this->resetSocket();
     emit this->finished(remotePath, localPath, false, _message);
 }
 
-void DownloadWorker::resetSocket()
+void FileDownloadWorker::resetSocket()
 {
     this->m_buffer.clear();
     if (!this->m_socket)

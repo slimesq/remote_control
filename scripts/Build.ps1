@@ -140,7 +140,15 @@ if ($shouldDeploy) {
         throw "windeployqt.exe was not found: $deployTool"
     }
 
-    $deployTargets = @("RemoteControlClient.exe", "RemoteControlServer.exe", "RemoteControlSmokeTest.exe", "RemoteControlProtocolTests.exe")
+    $deployTargets = @(
+        "RemoteControlClient.exe"
+        "RemoteControlServer.exe"
+        "RemoteControlSmokeTests.exe"
+        "RemoteControlProtocolTests.exe"
+        "RemoteControlTransportLifecycleTests.exe"
+        "RemoteControlConnectionStateTests.exe"
+        "RemoteControlTransportResilienceTests.exe"
+    )
     $executables = @(Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -Recurse -File | Where-Object Name -In $deployTargets)
     $deployArguments = @("--no-translations", "--compiler-runtime")
     $deployHelp = (& $deployTool --help 2>&1 | Out-String)

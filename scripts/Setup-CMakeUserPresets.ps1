@@ -231,7 +231,13 @@ $presetDocument = [ordered]@{
             name = "local-msvc-debug-tests"
             displayName = "Build Local Tests (Debug)"
             inherits = "local-msvc-debug"
-            targets = @("RemoteControlProtocolTests", "RemoteControlSmokeTest")
+            targets = @(
+                "RemoteControlProtocolTests"
+                "RemoteControlSmokeTests"
+                "RemoteControlTransportLifecycleTests"
+                "RemoteControlConnectionStateTests"
+                "RemoteControlTransportResilienceTests"
+            )
         },
         [ordered]@{
             name = "local-msvc-release"
@@ -255,7 +261,13 @@ $presetDocument = [ordered]@{
             name = "local-msvc-release-tests"
             displayName = "Build Local Tests (Release)"
             inherits = "local-msvc-release"
-            targets = @("RemoteControlProtocolTests", "RemoteControlSmokeTest")
+            targets = @(
+                "RemoteControlProtocolTests"
+                "RemoteControlSmokeTests"
+                "RemoteControlTransportLifecycleTests"
+                "RemoteControlConnectionStateTests"
+                "RemoteControlTransportResilienceTests"
+            )
         }
     )
     testPresets = @(

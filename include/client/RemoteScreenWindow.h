@@ -12,7 +12,7 @@ class RemoteClient;
 
 namespace Ui
 {
-class WatchWindow;
+class RemoteScreenWindow;
 }
 
 /** @brief Displays remote screen frames and converts local mouse input to protocol events. */
@@ -102,25 +102,25 @@ private:
     [[nodiscard]] static remote_control::MouseButton toProtocolButton(
         Qt::MouseButton _button) noexcept;
 
-    QImage m_image;                     ///< Most recently received remote-screen image.
+    QImage m_screenImage;               ///< Most recently received remote-screen image.
     QTimer* m_moveEventTimer{nullptr};  ///< Rate-limits emitted cursor-move events.
     remote_control::MouseEventPacket m_pendingMoveEvent;  ///< Latest unsent cursor position.
     bool m_hasPendingMoveEvent{false};  ///< Whether a cursor position is waiting to be emitted.
 };
 
 /** @brief Hosts the live remote screen view and completion-driven frame requests. */
-class WatchWindow : public QDialog
+class RemoteScreenWindow : public QDialog
 {
 public:
     /**
-     * @brief Creates a watch window backed by the provided client.
+     * @brief Creates a remote screen window backed by the provided client.
      * @param _client Client used for screen and mouse requests.
      * @param _parent Parent widget, or nullptr.
      */
-    explicit WatchWindow(RemoteClient* _client, QWidget* _parent = nullptr);
+    explicit RemoteScreenWindow(RemoteClient* _client, QWidget* _parent = nullptr);
 
-    /** @brief Destroys the watch window. */
-    ~WatchWindow() override;
+    /** @brief Destroys the remote screen window. */
+    ~RemoteScreenWindow() override;
 
 protected:
     /**
@@ -143,8 +143,8 @@ private:
     void scheduleNextFrame();
 
     RemoteClient* m_client{nullptr};  ///< Non-owning client used for screen and control requests.
-    RemoteScreenWidget* m_screenWidget{nullptr};  ///< Child widget that displays remote frames.
-    std::unique_ptr<Ui::WatchWindow> m_ui;        ///< Generated monitor-window user interface.
+    RemoteScreenWidget* m_screenWidget{nullptr};   ///< Child widget that displays remote frames.
+    std::unique_ptr<Ui::RemoteScreenWindow> m_ui;  ///< Generated remote-screen user interface.
     QTimer* m_frameRequestTimer{nullptr};  ///< Schedules the next bounded-rate frame request.
     QElapsedTimer m_frameRequestElapsed;   ///< Measures time spent on the current frame.
 };

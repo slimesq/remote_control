@@ -1,31 +1,31 @@
-#include "server/LockWindow.h"
+#include "server/ScreenLockWindow.h"
 
-#include "server/PlatformIntegration.h"
-#include "ui_LockWindow.h"
+#include "server/WindowsPlatformIntegration.h"
+#include "ui_ScreenLockWindow.h"
 
 #include <QCloseEvent>
 #include <QFocusEvent>
 #include <QKeyEvent>
 
-LockWindow::LockWindow(QWidget* _parent)
-    : QWidget{_parent}, m_ui{std::make_unique<Ui::LockWindow>()}
+ScreenLockWindow::ScreenLockWindow(QWidget* _parent)
+    : QWidget{_parent}, m_ui{std::make_unique<Ui::ScreenLockWindow>()}
 {
     this->m_ui->setupUi(this);
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setFocusPolicy(Qt::StrongFocus);
 }
 
-LockWindow::~LockWindow()
+ScreenLockWindow::~ScreenLockWindow()
 {
     if (this->m_locked)
     {
         releaseKeyboard();
         this->m_locked = false;
-        PlatformIntegration::setSystemUiLocked(false);
+        static_cast<void>(WindowsPlatformIntegration::setSystemUiLocked(false));
     }
 }
 
-void LockWindow::lockMachine()
+void ScreenLockWindow::lockScreen()
 {
     if (this->m_locked)
     {
@@ -33,8 +33,11 @@ void LockWindow::lockMachine()
         activateWindow();
         return;
     }
+    if (!WindowsPlatformIntegration::setSystemUiLocked(true))
+    {
+        return;
+    }
     this->m_locked = true;
-    PlatformIntegration::setSystemUiLocked(true);
     showFullScreen();
     raise();
     activateWindow();
@@ -42,7 +45,7 @@ void LockWindow::lockMachine()
     grabKeyboard();
 }
 
-void LockWindow::unlockMachine()
+void ScreenLockWindow::unlockScreen()
 {
     if (!this->m_locked)
     {
@@ -50,16 +53,16 @@ void LockWindow::unlockMachine()
     }
     this->m_locked = false;
     releaseKeyboard();
-    PlatformIntegration::setSystemUiLocked(false);
+    static_cast<void>(WindowsPlatformIntegration::setSystemUiLocked(false));
     hide();
 }
 
-bool LockWindow::isLocked() const noexcept
+bool ScreenLockWindow::isScreenLocked() const noexcept
 {
     return this->m_locked;
 }
 
-void LockWindow::closeEvent(QCloseEvent* _event)
+void ScreenLockWindow::closeEvent(QCloseEvent* _event)
 {
     if (this->m_locked)
     {
@@ -69,7 +72,7 @@ void LockWindow::closeEvent(QCloseEvent* _event)
     QWidget::closeEvent(_event);
 }
 
-void LockWindow::focusOutEvent(QFocusEvent* _event)
+void ScreenLockWindow::focusOutEvent(QFocusEvent* _event)
 {
     if (this->m_locked)
     {
@@ -81,12 +84,13 @@ void LockWindow::focusOutEvent(QFocusEvent* _event)
     QWidget::focusOutEvent(_event);
 }
 
-void LockWindow::keyPressEvent(QKeyEvent* _event)
+void ScreenLockWindow::keyPressEvent(QKeyEvent* _event)
 {
     // The local recovery shortcut is active only while this window owns the lock.
     if (this->m_locked && _event->key() == Qt::Key_C && (_event->modifiers() & Qt::ControlModifier))
     {
-        this->unlockMachine();
+        // Route recovery through ScreenLockService so its timer and public lock state stay synchronized.
+        emit this->unlockRequested();
         _event->accept();
         return;
     }

@@ -1,11 +1,12 @@
 #include "server/ServerTrayController.h"
 
-#include "server/CommandService.h"
-#include "server/PlatformIntegration.h"
-#include "server/RemoteServer.h"
+#include "server/ScreenLockService.h"
+#include "server/WindowsPlatformIntegration.h"
+#include "server/RemoteControlServer.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QMenu>
 #include <QMessageBox>
 #include <QStyle>
@@ -17,32 +18,70 @@ namespace
 constexpr int LockTestDurationSeconds{5};
 constexpr int TrayMessageDurationMs{3000};
 
+/**
+ * @brief Preserves current server options and adds a safe elevation handover marker.
+ * @return Arguments for the elevated replacement process.
+ */
+QStringList elevatedRelaunchArguments()
+{
+    QStringList arguments{QCoreApplication::arguments()};
+    arguments.removeFirst();
+    arguments.removeAll(QStringLiteral("--elevate"));
+
+    // Remove a stale handover marker before adding the current server process identifier.
+    for (int index{0}; index < arguments.size();)
+    {
+        QString const& argument{arguments[index]};
+        if (argument == QStringLiteral("--wait-for-pid"))
+        {
+            arguments.removeAt(index);
+            if (index < arguments.size())
+            {
+                arguments.removeAt(index);
+            }
+        }
+        else if (argument.startsWith(QStringLiteral("--wait-for-pid=")))
+        {
+            arguments.removeAt(index);
+        }
+        else
+        {
+            ++index;
+        }
+    }
+
+    arguments.append(QStringLiteral("--wait-for-pid"));
+    arguments.append(QString::number(QCoreApplication::applicationPid()));
+    return arguments;
+}
+
 }  // namespace
 
-ServerTrayController::ServerTrayController(RemoteServer* _server, QObject* _parent)
+ServerTrayController::ServerTrayController(RemoteControlServer* _server, QObject* _parent)
     : QObject{_parent},
       m_server{_server},
       m_trayIcon{new QSystemTrayIcon{this}},
-      m_menu{new QMenu{}}
+      m_trayMenu{new QMenu{}}
 {
     this->m_trayIcon->setIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
-    connect(this, &QObject::destroyed, this->m_menu, &QObject::deleteLater);
+    connect(this, &QObject::destroyed, this->m_trayMenu, &QObject::deleteLater);
 
-    CommandService* const commandService{this->m_server->commandService()};
-    connect(commandService, &CommandService::lockStateChanged, this, [this] {
+    ScreenLockService* const screenLockService{this->m_server->screenLockService()};
+    connect(screenLockService, &ScreenLockService::lockStateChanged, this, [this] {
         this->refreshActionState();
     });
-    connect(commandService, &CommandService::timedLockTestFinished, this, [this] {
+    connect(screenLockService, &ScreenLockService::timedLockTestFinished, this, [this] {
         this->showInfo(tr("Lock test"), tr("Timed lock test finished."));
     });
 
-    this->m_statusAction = this->m_menu->addAction(QString());
+    this->m_statusAction = this->m_trayMenu->addAction(QString());
     this->m_statusAction->setEnabled(false);
 
-    this->m_adminAction = this->m_menu->addAction(tr("Restart as administrator"));
-    connect(this->m_adminAction, &QAction::triggered, this, [this] {
+    this->m_elevateAction = this->m_trayMenu->addAction(tr("Restart as administrator"));
+    connect(this->m_elevateAction, &QAction::triggered, this, [this] {
         QString errorMessage;
-        if (!PlatformIntegration::relaunchElevated({}, &errorMessage))
+        if (!WindowsPlatformIntegration::relaunchElevated(elevatedRelaunchArguments(),
+                                                          &errorMessage))
         {
             this->showError(tr("Elevation failed"), errorMessage);
             return;
@@ -50,12 +89,12 @@ ServerTrayController::ServerTrayController(RemoteServer* _server, QObject* _pare
         QCoreApplication::quit();
     });
 
-    this->m_menu->addSeparator();
+    this->m_trayMenu->addSeparator();
 
-    this->m_startupInstallAction = this->m_menu->addAction(tr("Enable startup"));
-    connect(this->m_startupInstallAction, &QAction::triggered, this, [this] {
+    this->m_installStartupAction = this->m_trayMenu->addAction(tr("Enable startup"));
+    connect(this->m_installStartupAction, &QAction::triggered, this, [this] {
         QString errorMessage;
-        if (!PlatformIntegration::installStartupEntry(&errorMessage))
+        if (!WindowsPlatformIntegration::installStartupEntry(&errorMessage))
         {
             this->showError(tr("Startup"), errorMessage);
             return;
@@ -64,10 +103,10 @@ ServerTrayController::ServerTrayController(RemoteServer* _server, QObject* _pare
         this->showInfo(tr("Startup"), tr("Startup has been enabled."));
     });
 
-    this->m_startupRemoveAction = this->m_menu->addAction(tr("Disable startup"));
-    connect(this->m_startupRemoveAction, &QAction::triggered, this, [this] {
+    this->m_removeStartupAction = this->m_trayMenu->addAction(tr("Disable startup"));
+    connect(this->m_removeStartupAction, &QAction::triggered, this, [this] {
         QString errorMessage;
-        if (!PlatformIntegration::removeStartupEntry(&errorMessage))
+        if (!WindowsPlatformIntegration::removeStartupEntry(&errorMessage))
         {
             this->showError(tr("Startup"), errorMessage);
             return;
@@ -76,30 +115,30 @@ ServerTrayController::ServerTrayController(RemoteServer* _server, QObject* _pare
         this->showInfo(tr("Startup"), tr("Startup has been disabled."));
     });
 
-    this->m_menu->addSeparator();
+    this->m_trayMenu->addSeparator();
 
-    this->m_lockAction = this->m_menu->addAction(tr("Lock machine"));
+    this->m_lockAction = this->m_trayMenu->addAction(tr("Lock machine"));
     connect(this->m_lockAction, &QAction::triggered, this, [this] {
-        this->m_server->commandService()->lockLocalMachine();
+        this->m_server->screenLockService()->lockScreen();
     });
 
-    this->m_unlockAction = this->m_menu->addAction(tr("Unlock machine"));
+    this->m_unlockAction = this->m_trayMenu->addAction(tr("Unlock machine"));
     connect(this->m_unlockAction, &QAction::triggered, this, [this] {
-        this->m_server->commandService()->unlockLocalMachine();
+        this->m_server->screenLockService()->unlockScreen();
     });
 
     this->m_lockTestAction =
-        this->m_menu->addAction(tr("Run %1s lock test").arg(LockTestDurationSeconds));
+        this->m_trayMenu->addAction(tr("Run %1s lock test").arg(LockTestDurationSeconds));
     connect(this->m_lockTestAction, &QAction::triggered, this, [this] {
-        this->m_server->commandService()->runTimedLockTest(LockTestDurationSeconds);
+        this->m_server->screenLockService()->runTimedLockTest(LockTestDurationSeconds);
     });
 
-    this->m_menu->addSeparator();
+    this->m_trayMenu->addSeparator();
 
-    this->m_quitAction = this->m_menu->addAction(tr("Exit"));
+    this->m_quitAction = this->m_trayMenu->addAction(tr("Exit"));
     connect(this->m_quitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
 
-    this->m_trayIcon->setContextMenu(this->m_menu);
+    this->m_trayIcon->setContextMenu(this->m_trayMenu);
     connect(this->m_trayIcon,
             &QSystemTrayIcon::activated,
             this,
@@ -126,16 +165,16 @@ void ServerTrayController::show()
 void ServerTrayController::refreshActionState()
 {
     this->m_statusAction->setText(tr("Listening on port %1").arg(this->m_server->listeningPort()));
-    bool const isAdmin{PlatformIntegration::isRunningAsAdmin()};
-    this->m_adminAction->setEnabled(!isAdmin);
-    this->m_adminAction->setText(isAdmin ? tr("Already running as administrator")
-                                         : tr("Restart as administrator"));
+    bool const isElevated{WindowsPlatformIntegration::isRunningAsAdmin()};
+    this->m_elevateAction->setEnabled(!isElevated);
+    this->m_elevateAction->setText(isElevated ? tr("Already running as administrator")
+                                              : tr("Restart as administrator"));
 
-    bool const startupEnabled{PlatformIntegration::startupEntryExists()};
-    this->m_startupInstallAction->setEnabled(!startupEnabled);
-    this->m_startupRemoveAction->setEnabled(startupEnabled);
+    bool const startupEnabled{WindowsPlatformIntegration::startupEntryExists()};
+    this->m_installStartupAction->setEnabled(!startupEnabled);
+    this->m_removeStartupAction->setEnabled(startupEnabled);
 
-    bool const locked{this->m_server->commandService()->isLocked()};
+    bool const locked{this->m_server->screenLockService()->isScreenLocked()};
     this->m_lockAction->setEnabled(!locked);
     this->m_unlockAction->setEnabled(locked);
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>WatchWindow</class>
- <widget class="QDialog" name="WatchWindow">
+ <class>RemoteScreenWindow</class>
+ <widget class="QDialog" name="RemoteScreenWindow">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -70,7 +70,7 @@ QPushButton:pressed {
       <item>
        <layout class="QHBoxLayout" name="toolbarLayout">
         <item>
-         <spacer name="horizontalSpacer">
+         <spacer name="toolbarSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
           </property>

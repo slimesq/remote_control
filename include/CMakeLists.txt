@@ -1,22 +1,18 @@
 set(REMOTE_CONTROL_PUBLIC_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/ControlConnectionWorker.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/DownloadWorker.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/ControlStreamWorker.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/FileDownloadWorker.h
     ${CMAKE_CURRENT_SOURCE_DIR}/client/MainWindow.h
     ${CMAKE_CURRENT_SOURCE_DIR}/client/RemoteClient.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/WatchConnectionWorker.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/WatchWindow.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/RemoteScreenWindow.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/ScreenStreamWorker.h
     ${CMAKE_CURRENT_SOURCE_DIR}/common/Packet.h
     ${CMAKE_CURRENT_SOURCE_DIR}/common/Protocol.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/CommandService.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/ControlStreamThread.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/FileRequestPool.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/FileRequestWorker.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/LockWindow.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/PlatformIntegration.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/RemoteServer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/RemoteSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/ScreenLockService.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/RemoteControlTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/ScreenLockWindow.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/WindowsPlatformIntegration.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/RemoteControlServer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/server/ServerTrayController.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/WatchStreamThread.h
 )
 
 add_custom_target(RemoteControlHeaders SOURCES

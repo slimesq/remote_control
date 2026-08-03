@@ -1,7 +1,7 @@
 # Remote Control Qt
 
-基于 Qt Widgets 和 TCP 的 Windows 远程控制学习项目，包含客户端、服务端、协议测试和
-端到端 smoke test。项目支持使用 VS Code 或 Qt Creator 开发，并兼容 Qt 5.15 与 Qt 6
+基于 Qt Widgets、TCP 和 Windows IOCP 的远程控制学习项目。客户端使用 Qt 异步网络接口，
+服务端使用 IOCP 和固定大小任务池；项目支持 VS Code 与 Qt Creator，并兼容 Qt 5.15 和 Qt 6
 的 MSVC Kit。
 
 ## 功能
@@ -19,8 +19,8 @@
 include/          公共头文件
 src/common/       协议与数据包
 src/client/       Qt 客户端
-src/server/       Qt 服务端
-src/tests/        协议测试与端到端 smoke test
+src/server/       Qt 应用层与 Windows IOCP 服务端
+src/tests/        协议、状态机、韧性测试与端到端 smoke test
 scripts/          构建与运行入口
 .vscode/          VS Code 构建、调试和 clangd 配置
 .claude/skills/   项目编码与审查规则
@@ -32,8 +32,11 @@ scripts/          构建与运行入口
 | --- | --- |
 | `RemoteControlClient` | 远程控制客户端 |
 | `RemoteControlServer` | 远程控制服务端 |
-| `RemoteControlSmokeTest` | 连接到运行中服务端的端到端回归测试 |
+| `RemoteControlSmokeTests` | 连接到运行中服务端的端到端回归测试 |
 | `RemoteControlProtocolTests` | 无系统副作用的协议边界与 UTF-8 编解码测试 |
+| `RemoteControlTransportLifecycleTests` | IOCP 启动、并发连接与安全关闭压力测试 |
+| `RemoteControlConnectionStateTests` | 连接状态转换、并发关闭和容量配额测试 |
+| `RemoteControlTransportResilienceTests` | 真实 TCP 故障注入与并发请求压力测试 |
 
 ## 环境要求
 
@@ -67,8 +70,8 @@ scripts/          构建与运行入口
 # 终端 2：启动客户端
 .\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
 
-# 运行无系统副作用的协议测试
-ctest --test-dir .\build\msvc-debug --output-on-failure -R RemoteControlProtocolTests
+# 运行全部无系统副作用的 CTest 测试
+ctest --test-dir .\build\msvc-debug --output-on-failure
 ```
 
 更多参数参见 [脚本说明](scripts/README.md)。
@@ -83,8 +86,11 @@ ctest --test-dir .\build\msvc-debug --output-on-failure -R RemoteControlProtocol
 4. 选择需要的 CMake target：
    - `RemoteControlClient`
    - `RemoteControlServer`
-   - `RemoteControlSmokeTest`
+   - `RemoteControlSmokeTests`
    - `RemoteControlProtocolTests`
+   - `RemoteControlTransportLifecycleTests`
+   - `RemoteControlConnectionStateTests`
+   - `RemoteControlTransportResilienceTests`
 
 Qt Creator 通常会自动为 CMake target 创建运行配置。常用参数：
 
@@ -94,7 +100,7 @@ Qt Creator 通常会自动为 CMake target 创建运行配置。常用参数：
 | `RemoteControlServer` | 无 | 启动带托盘的服务端 |
 | `RemoteControlServer` | `--no-tray` | 启动无托盘服务端 |
 | `RemoteControlServer` | `--no-tray --lock-test 2` | 执行两秒模拟锁定测试 |
-| `RemoteControlSmokeTest` | `127.0.0.1 9527` | 测试本地服务端 |
+| `RemoteControlSmokeTests` | `127.0.0.1 9527` | 测试本地服务端 |
 
 如果 Qt Creator 的运行环境找不到 Qt DLL，可以创建 `Custom Executable`：
 
@@ -116,7 +122,7 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 
 - 客户端默认连接地址：`127.0.0.1`
 - 客户端和服务端默认端口：`9527`
-- 服务端监听地址：所有本机网络接口（`QHostAddress::Any`）
+- 服务端监听地址：所有本机 IPv4 网络接口（`INADDR_ANY`）
 
 客户端只负责连接指定服务端，不会启动或管理服务端进程。本地开发时，请在两个终端中分别启动服务端和客户端：
 
@@ -147,16 +153,21 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 
 `Run.ps1` 对外提供常用的地址、端口、无托盘和模拟锁定测试参数；启动项和提权操作需要直接运行 `RemoteControlServer.exe`。
 
-## 运行模型
+## 架构摘要
 
-- `TestConnection`、`ListDrives` 和 `RunFile` 使用一次性短连接。客户端通过事件循环异步处理，不会同步等待网络；服务端由 `RemoteSession` 转交 `CommandService`。
-- `ListDirectory`、`DownloadFile` 和 `DeleteFile` 使用一次性文件任务连接。服务端将
-  socket 和请求转移到 2～4 个可复用的 `FileRequestWorker`；待处理队列最多保留 64 个
-  请求。
-- 客户端下载、远程画面和远程控制分别使用独立的常驻 `QThread` 和 worker object。
-- `WatchScreen` 使用独立监控长连接，一次只允许一帧处于请求中；客户端在每帧完成后按最高约 30 FPS 自适应调度下一帧，服务端最多接受 4 条监控连接。
-- `ControlChannel` 使用独立控制长连接，命令按顺序等待响应，连续鼠标移动会合并；服务端最多接受 4 条控制连接。
-- 监控和控制使用不同连接，避免较大的截图数据阻塞鼠标与模拟锁定命令。
+- `RemoteControlClient` 的界面位于主线程；下载、屏幕流和控制流分别使用常驻 `QThread`。
+- 一次性命令各自创建异步 TCP 连接；屏幕和控制使用两条独立长连接，避免大图像阻塞输入命令。
+- `RemoteControlServer` 是唯一服务端程序；`RemoteControlServerCore` 只是供程序和测试复用的
+  内部静态库。
+- `RemoteControlTransport` 使用少量 IOCP completion worker 处理所有 socket 完成通知，阻塞工作
+  进入命令、文件或截图任务池。
+- 连接由 `ConnectionRegistry` 持有，并通过 `ConnectionStateMachine` 从等待首包单向进入一个
+  固定业务阶段，最终经过 `Closing` 到达 `Closed`。
+- 目录和下载按发送完成节奏分批推进；每条连接只有一个发送在途，并使用有界队列提供背压。
+
+完整的对象、线程、连接和关闭关系分别见
+[客户端系统架构](docs/ClientArchitecture.md)与
+[IOCP 服务端系统架构](docs/ServerArchitecture.md)。
 
 客户端目录树使用 `DirectoryLoadState` 表示 `Unloaded`、`Loading`、`Loaded` 和
 `Refreshing`。目录加载成功后缓存 `QList<FileEntry>`；普通点击可以复用缓存，强制刷新
@@ -175,21 +186,31 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 | 测试 | 覆盖范围 |
 | --- | --- |
 | `RemoteControlProtocolTests` | Packet 非法长度恢复、拆分包头、FileEntry/UTF-8、无效负载和状态负载 |
-| `RemoteControlSmokeTest` | 连接、磁盘与目录、并发/空/缺失文件下载、递归删除、监控长连接、控制长连接和文件执行 |
+| `RemoteControlTransportLifecycleTests` | 连续创建 transport、连接到达期间停止、pending accept/receive 取消与线程回收 |
+| `RemoteControlConnectionStateTests` | 单向状态转换、并发关闭唯一性、总连接容量和长连接配额回收 |
+| `RemoteControlTransportResilienceTests` | 损坏前缀、错误校验、超长声明、半包断开、连接角色错配和 128 次并发请求 |
+| `RemoteControlSmokeTests` | 连接、磁盘与目录、直接网络路径拒绝、并发/慢客户端下载、junction 自身安全删除、监控/控制长连接和文件执行 |
 
-`RemoteControlSmokeTest` 会连接并操作正在运行的服务端，包括截图、鼠标控制路径和文件执行验证，只应在受控测试环境运行。
+`RemoteControlSmokeTests` 会连接并操作正在运行的服务端，包括截图、鼠标控制路径和文件执行验证，只应在受控测试环境运行。
 
-## 文档
+## 文档导航
 
-- [构建与运行脚本](scripts/README.md)
-- [项目代码学习指南](docs/StudyGuide.md)
-- [客户端系统架构图](docs/ClientArchitecture.md)
+| 文档 | 适合什么时候阅读 |
+| --- | --- |
+| [构建与运行脚本](scripts/README.md) | 查找脚本参数、preset、构建目录和测试命令 |
+| [项目代码学习指南](docs/StudyGuide.md) | 第一次系统阅读代码，或按知识点安排学习顺序 |
+| [远程控制协议参考](docs/ProtocolReference.md) | 查询 Packet 布局、命令、payload 和连接阶段 |
+| [客户端系统架构](docs/ClientArchitecture.md) | 理解 GUI、worker、连接模型和对象线程归属 |
+| [IOCP 服务端系统架构](docs/ServerArchitecture.md) | 理解 IOCP、连接状态机、任务池、背压和安全关闭 |
 
 ## 安全提示
 
 该项目包含远程文件执行、删除、屏幕查看和输入控制能力。当前协议未提供身份认证或
 TLS 加密，不应直接暴露到公网或不可信网络。请仅在学习、测试或明确授权的受控环境中
 使用。
+
+文件操作会拒绝直接的 UNC 路径和映射网络盘，但当前只根据盘符根目录判断 drive type，
+尚未验证 junction 或 symbolic link 解析后的最终位置。因此它不是文件系统安全沙箱。
 
 项目中的“锁定”是应用级模拟锁定：服务端显示全屏覆盖窗口、隐藏任务栏、限制鼠标并
 抢占键盘输入，`Ctrl+C` 可用于紧急解锁。它不等同于 Windows 会话锁定，也不能作为系统

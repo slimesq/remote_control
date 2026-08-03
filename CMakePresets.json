@@ -89,7 +89,10 @@
             "inherits": "msvc-debug",
             "targets": [
                 "RemoteControlProtocolTests",
-                "RemoteControlSmokeTest"
+                "RemoteControlSmokeTests",
+                "RemoteControlTransportLifecycleTests",
+                "RemoteControlConnectionStateTests",
+                "RemoteControlTransportResilienceTests"
             ]
         },
         {
@@ -114,7 +117,10 @@
             "inherits": "msvc-release",
             "targets": [
                 "RemoteControlProtocolTests",
-                "RemoteControlSmokeTest"
+                "RemoteControlSmokeTests",
+                "RemoteControlTransportLifecycleTests",
+                "RemoteControlConnectionStateTests",
+                "RemoteControlTransportResilienceTests"
             ]
         }
     ],

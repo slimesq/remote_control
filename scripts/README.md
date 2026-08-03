@@ -2,6 +2,15 @@
 
 返回 [项目主页](../README.md)。
 
+日常开发通常只需要下面四条命令：
+
+```powershell
+.\scripts\Build.ps1
+.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug
+.\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
+ctest --test-dir .\build\msvc-debug --output-on-failure
+```
+
 脚本入口如下：
 
 | 文件 | 作用 | 是否日常使用 |
@@ -62,10 +71,10 @@ Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Buil
 | `local-msvc-debug` | Debug 全部目标 |
 | `local-msvc-debug-client` | Debug 客户端 `RemoteControlClient` |
 | `local-msvc-debug-server` | Debug 服务端 `RemoteControlServer` |
-| `local-msvc-debug-tests` | Debug 测试程序 |
+| `local-msvc-debug-tests` | Debug 的协议、smoke、生命周期、状态机和韧性测试程序 |
 | `local-msvc-release-client` | Release 客户端 `RemoteControlClient` |
 | `local-msvc-release-server` | Release 服务端 `RemoteControlServer` |
-| `local-msvc-release-tests` | Release 测试程序 |
+| `local-msvc-release-tests` | Release 的协议、smoke、生命周期、状态机和韧性测试程序 |
 
 常用命令：
 
@@ -192,7 +201,12 @@ build/msvc-release
 
 ## 测试
 
-协议测试已经注册到 CTest，不需要启动服务端：
+下面四个测试已经注册到 CTest，不需要人工启动服务端：
+
+- `RemoteControlProtocolTests`
+- `RemoteControlTransportLifecycleTests`
+- `RemoteControlConnectionStateTests`
+- `RemoteControlTransportResilienceTests`
 
 ```powershell
 ctest --test-dir .\build\msvc-debug --output-on-failure
@@ -207,6 +221,9 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 
 smoke test 会验证截图、控制通道、文件执行、下载和删除，只应连接受控测试环境。
 其中鼠标控制和文件操作会对服务端产生实际影响。
+
+CTest 中的韧性测试会在进程内使用临时端口启动传输层，注入损坏前缀、错误校验、超长声明、
+半包断开和连接角色错配，并执行并发连接压力测试；它不会触发鼠标、锁定或文件修改操作。
 
 ## VS Code 和 Qt Creator
 

@@ -1,26 +1,44 @@
+add_library(RemoteControlServerCore STATIC
+    ScreenLockService.cpp
+    RemoteControlServerLog.cpp
+    RemoteControlServerLog.h
+    RemoteControlTransport.cpp
+    RemoteControlTransportFileTransfer.cpp
+    RemoteControlTransportInternal.h
+    RemoteControlTransportProtocol.cpp
+    RemoteControlTransportRuntime.cpp
+    ScreenLockWindow.cpp
+    ScreenLockWindow.ui
+    WindowsPlatformIntegration.cpp
+    ${PROJECT_SOURCE_DIR}/include/server/ScreenLockService.h
+    ${PROJECT_SOURCE_DIR}/include/server/RemoteControlTransport.h
+    ${PROJECT_SOURCE_DIR}/include/server/ScreenLockWindow.h
+    ${PROJECT_SOURCE_DIR}/include/server/WindowsPlatformIntegration.h
+)
+
+target_include_directories(RemoteControlServerCore PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_include_directories(RemoteControlServerCore PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(RemoteControlServerCore PUBLIC
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Widgets
+    RemoteControlCommon
+    ws2_32
+    mswsock
+)
+
 add_executable(RemoteControlServer
-    CommandService.cpp
-    ControlStreamThread.cpp
-    FileRequestPool.cpp
-    FileRequestWorker.cpp
-    LockWindow.cpp
-    LockWindow.ui
-    PlatformIntegration.cpp
-    RemoteServer.cpp
-    RemoteSession.cpp
+    RemoteControlServer.cpp
     ServerMain.cpp
     ServerTrayController.cpp
-    WatchStreamThread.cpp
-    ${PROJECT_SOURCE_DIR}/include/server/CommandService.h
-    ${PROJECT_SOURCE_DIR}/include/server/ControlStreamThread.h
-    ${PROJECT_SOURCE_DIR}/include/server/FileRequestPool.h
-    ${PROJECT_SOURCE_DIR}/include/server/FileRequestWorker.h
-    ${PROJECT_SOURCE_DIR}/include/server/LockWindow.h
-    ${PROJECT_SOURCE_DIR}/include/server/PlatformIntegration.h
-    ${PROJECT_SOURCE_DIR}/include/server/RemoteServer.h
-    ${PROJECT_SOURCE_DIR}/include/server/RemoteSession.h
+    ${PROJECT_SOURCE_DIR}/include/server/RemoteControlServer.h
     ${PROJECT_SOURCE_DIR}/include/server/ServerTrayController.h
-    ${PROJECT_SOURCE_DIR}/include/server/WatchStreamThread.h
 )
 
 target_include_directories(RemoteControlServer PRIVATE
@@ -31,6 +49,5 @@ target_link_libraries(RemoteControlServer PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Widgets
-    Qt${QT_VERSION_MAJOR}::Network
-    RemoteControlCommon
+    RemoteControlServerCore
 )

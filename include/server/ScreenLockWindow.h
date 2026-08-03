@@ -7,33 +7,39 @@ class QKeyEvent;
 
 namespace Ui
 {
-class LockWindow;
+class ScreenLockWindow;
 }
 
 /** @brief Provides the full-screen Windows lock overlay managed by the server. */
-class LockWindow : public QWidget
+class ScreenLockWindow : public QWidget
 {
+    Q_OBJECT
+
 public:
     /**
      * @brief Creates a lock overlay.
      * @param _parent Parent widget, or nullptr.
      */
-    explicit LockWindow(QWidget* _parent = nullptr);
+    explicit ScreenLockWindow(QWidget* _parent = nullptr);
 
     /** @brief Restores system UI state before destroying the overlay. */
-    ~LockWindow() override;
+    ~ScreenLockWindow() override;
 
     /** @brief Shows the lock overlay and hides supported Windows shell UI. */
-    void lockMachine();
+    void lockScreen();
 
     /** @brief Hides the lock overlay and restores supported Windows shell UI. */
-    void unlockMachine();
+    void unlockScreen();
 
     /**
      * @brief Returns whether the overlay is currently locked.
      * @return true when the overlay is locked; otherwise false.
      */
-    [[nodiscard]] bool isLocked() const noexcept;
+    [[nodiscard]] bool isScreenLocked() const noexcept;
+
+signals:
+    /** @brief Requests a coordinated unlock after the local recovery shortcut is pressed. */
+    void unlockRequested();
 
 protected:
     /**
@@ -55,6 +61,6 @@ protected:
     void keyPressEvent(QKeyEvent* _event) override;
 
 private:
-    std::unique_ptr<Ui::LockWindow> m_ui;  ///< Generated lock-window user interface.
-    bool m_locked{false};                  ///< Whether the simulated lock is currently active.
+    std::unique_ptr<Ui::ScreenLockWindow> m_ui;  ///< Generated lock-window user interface.
+    bool m_locked{false};  ///< Whether the simulated lock is currently active.
 };

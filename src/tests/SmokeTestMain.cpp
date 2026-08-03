@@ -5,15 +5,21 @@
 #include <QDataStream>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QProcess>
 #include <QRandomGenerator>
+#include <QStringList>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 
 #include <cstdlib>
+#include <chrono>
 #include <future>
 #include <iostream>
+#include <memory>
+#include <thread>
 #include <vector>
 
 namespace
@@ -22,6 +28,10 @@ namespace
 constexpr int NetworkTimeoutMs{5000};
 constexpr int LargeDownloadSize{256 * 1024 + 37};
 constexpr int ConcurrentFileRequestCount{6};
+constexpr int SlowDownloadSize{16 * 1024 * 1024};
+constexpr int SlowDownloadClientCount{6};
+constexpr int SlowClientSettleDelayMs{250};
+constexpr int LargeDirectoryEntryCount{131};
 constexpr int ControlCommandCount{2};
 constexpr int ExpectedControlResponseCount{ControlCommandCount + 1};
 
@@ -103,13 +113,46 @@ ResponseBundle sendCommand(QString const& _host,
 }
 
 /**
+ * @brief Starts a download whose response is intentionally left unread.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _remotePath Source file requested from the server.
+ * @param _error Receives a connection or write error.
+ * @return Connected slow-client socket, or nullptr when setup fails.
+ */
+std::unique_ptr<QTcpSocket> startSlowDownload(QString const& _host,
+                                              quint16 _port,
+                                              QString const& _remotePath,
+                                              QString* _error)
+{
+    auto socket{std::make_unique<QTcpSocket>()};
+    socket->setReadBufferSize(1);
+    socket->connectToHost(_host, _port);
+    if (!socket->waitForConnected(NetworkTimeoutMs))
+    {
+        *_error = socket->errorString();
+        return nullptr;
+    }
+
+    QByteArray const request{remote_control::Packet{remote_control::Command::DownloadFile,
+                                                    remote_control::encodeUtf8(_remotePath)}
+                                 .serialize()};
+    if (socket->write(request) < 0 || !socket->waitForBytesWritten(NetworkTimeoutMs))
+    {
+        *_error = socket->errorString();
+        return nullptr;
+    }
+    return socket;
+}
+
+/**
  * @brief Requests multiple screen frames over one persistent TCP connection.
  * @param _host Remote server host name or address.
  * @param _port Remote server TCP port.
  * @param _frameCount Number of frames to request sequentially.
  * @return Collected frame packets and any network or protocol error.
  */
-ResponseBundle requestWatchFrames(QString const& _host, quint16 _port, int _frameCount)
+ResponseBundle requestScreenFrames(QString const& _host, quint16 _port, int _frameCount)
 {
     ResponseBundle result;
     QTcpSocket socket;
@@ -163,6 +206,84 @@ ResponseBundle requestWatchFrames(QString const& _host, quint16 _port, int _fram
         socket.waitForDisconnected(NetworkTimeoutMs);
     }
     return result;
+}
+
+/**
+ * @brief Pipelines watch requests to verify the server's single-request coalescing state.
+ * @param _host Remote server host name or address.
+ * @param _port Remote server TCP port.
+ * @param _frameCount Number of requests sent before reading responses.
+ * @return Collected frame packets and any network or protocol error.
+ */
+ResponseBundle requestPipelinedScreenFrames(QString const& _host, quint16 _port, int _frameCount)
+{
+    ResponseBundle result;
+    QTcpSocket socket;
+    socket.connectToHost(_host, _port);
+    if (!socket.waitForConnected(NetworkTimeoutMs))
+    {
+        result.error = socket.errorString();
+        return result;
+    }
+
+    QByteArray requests;
+    for (int frameIndex{0}; frameIndex < _frameCount; ++frameIndex)
+    {
+        requests.append(remote_control::Packet{remote_control::Command::WatchScreen}.serialize());
+    }
+    if (socket.write(requests) < 0 || !socket.waitForBytesWritten(NetworkTimeoutMs))
+    {
+        result.error = socket.errorString();
+        return result;
+    }
+
+    QByteArray buffer;
+    while (result.packets.size() < _frameCount)
+    {
+        auto const packet{remote_control::Packet::tryParse(buffer)};
+        if (packet.has_value())
+        {
+            if (packet->command != remote_control::Command::WatchScreen)
+            {
+                result.error = QStringLiteral("Unexpected pipelined monitor response command");
+                return result;
+            }
+            result.packets.push_back(packet.value());
+            continue;
+        }
+        if (socket.bytesAvailable() == 0 && !socket.waitForReadyRead(NetworkTimeoutMs))
+        {
+            result.error = socket.errorString().isEmpty()
+                ? QStringLiteral("Timed out waiting for pipelined monitor frames")
+                : socket.errorString();
+            return result;
+        }
+        buffer.append(socket.readAll());
+    }
+    return result;
+}
+
+/**
+ * @brief Creates an NTFS directory junction for recursive-delete safety testing.
+ * @param _junctionPath Junction path to create.
+ * @param _targetPath Existing directory referenced by the junction.
+ * @return true when mklink creates the junction; otherwise false.
+ */
+bool createDirectoryJunction(QString const& _junctionPath, QString const& _targetPath)
+{
+    QProcess process;
+    process.setProgram(QStringLiteral("cmd.exe"));
+    process.setArguments({QStringLiteral("/d"),
+                          QStringLiteral("/c"),
+                          QStringLiteral("mklink"),
+                          QStringLiteral("/J"),
+                          QDir::toNativeSeparators(_junctionPath),
+                          QDir::toNativeSeparators(_targetPath)});
+    process.setStandardOutputFile(QProcess::nullDevice());
+    process.setStandardErrorFile(QProcess::nullDevice());
+    process.start();
+    return process.waitForStarted(NetworkTimeoutMs) && process.waitForFinished(NetworkTimeoutMs) &&
+        process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
 
 /**
@@ -559,6 +680,24 @@ int main(int argc, char* argv[])
                    QStringLiteral("invalid directory marker should terminate the listing"));
     }
 
+    QString const networkDirectory{QStringLiteral("//127.0.0.1/__remote_control_missing_share__")};
+    ResponseBundle const networkDirectoryResponse{
+        sendCommand(host,
+                    port,
+                    remote_control::Command::ListDirectory,
+                    remote_control::encodeUtf8(networkDirectory))};
+    allPassed &= expect(networkDirectoryResponse.error.isEmpty(),
+                        QStringLiteral("network directory request should be rejected promptly"));
+    allPassed &= expect(networkDirectoryResponse.packets.size() == 1,
+                        QStringLiteral("network directory should return one marker packet"));
+    if (!networkDirectoryResponse.packets.isEmpty())
+    {
+        remote_control::FileEntry const invalidEntry{remote_control::FileEntry::fromPayload(
+            networkDirectoryResponse.packets.first().payload)};
+        allPassed &= expect(invalidEntry.isInvalid && !invalidEntry.hasNext,
+                            QStringLiteral("network directory should be marked invalid"));
+    }
+
     QTemporaryDir const tempDir;
     allPassed &= expect(tempDir.isValid(), QStringLiteral("temporary directory should be created"));
 
@@ -601,6 +740,47 @@ int main(int argc, char* argv[])
             QStringLiteral("concurrent download %1").arg(requestIndex + 1));
     }
 
+    QString const slowDownloadPath{
+        tempDir.filePath(QStringLiteral("slow-download-%1.bin").arg(uniqueSuffix))};
+    {
+        QFile slowDownloadFile{slowDownloadPath};
+        if (!slowDownloadFile.open(QIODevice::WriteOnly) ||
+            !slowDownloadFile.resize(SlowDownloadSize))
+        {
+            std::cerr << "[FAIL] could not create slow download source file" << std::endl;
+            return EXIT_FAILURE;
+        }
+    }
+    std::vector<std::unique_ptr<QTcpSocket>> slowDownloads;
+    slowDownloads.reserve(SlowDownloadClientCount);
+    for (int requestIndex{0}; requestIndex < SlowDownloadClientCount; ++requestIndex)
+    {
+        QString error;
+        std::unique_ptr<QTcpSocket> socket{startSlowDownload(host, port, slowDownloadPath, &error)};
+        allPassed &= expect(
+            socket != nullptr,
+            QStringLiteral("slow download %1 should start: %2").arg(requestIndex + 1).arg(error));
+        if (socket)
+        {
+            slowDownloads.push_back(std::move(socket));
+        }
+    }
+
+    // Give the server time to encounter backpressure before testing file-pool fairness.
+    std::this_thread::sleep_for(std::chrono::milliseconds{SlowClientSettleDelayMs});
+    ResponseBundle const fairDirectoryResponse{
+        sendCommand(host,
+                    port,
+                    remote_control::Command::ListDirectory,
+                    remote_control::encodeUtf8(tempDir.path()))};
+    allPassed &= expect(fairDirectoryResponse.error.isEmpty() &&
+                            validateDirectoryResponse(fairDirectoryResponse.packets),
+                        QStringLiteral("slow downloads should not starve directory requests"));
+    for (std::unique_ptr<QTcpSocket> const& socket : slowDownloads)
+    {
+        socket->abort();
+    }
+
     QString const unicodeDirName{QStringLiteral("unicode_dir_%1_").arg(uniqueSuffix) +
                                  QString::fromUcs4(U"\u6D4B\u8BD5")};
     QString const unicodeFileName{QStringLiteral("unicode_file_%1_").arg(uniqueSuffix) +
@@ -613,6 +793,20 @@ int main(int argc, char* argv[])
         unicodeFile.open(QIODevice::WriteOnly);
         unicodeFile.write("unicode content");
     }
+    QStringList largeDirectoryNames;
+    largeDirectoryNames.reserve(LargeDirectoryEntryCount);
+    for (int entryIndex{0}; entryIndex < LargeDirectoryEntryCount; ++entryIndex)
+    {
+        QString const fileName{
+            QStringLiteral("batch-entry-%1.tmp").arg(entryIndex, 3, 10, QChar{'0'})};
+        QFile file{tempDir.filePath(fileName)};
+        if (!file.open(QIODevice::WriteOnly))
+        {
+            std::cerr << "[FAIL] could not create incremental directory test entry" << std::endl;
+            return EXIT_FAILURE;
+        }
+        largeDirectoryNames.push_back(fileName);
+    }
     ResponseBundle const tempDirResponse{sendCommand(host,
                                                      port,
                                                      remote_control::Command::ListDirectory,
@@ -624,10 +818,13 @@ int main(int argc, char* argv[])
         expect(validateDirectoryResponse(tempDirResponse.packets),
                QStringLiteral("temp directory listing should include a terminating packet"));
     allPassed &=
-        expect(directoryContainsNames(
-                   tempDirResponse.packets,
-                   {unicodeDirName, unicodeFileName, QFileInfo{downloadSourcePath}.fileName()}),
-               QStringLiteral("temp directory listing should preserve unicode names"));
+        expect(directoryContainsNames(tempDirResponse.packets,
+                                      {unicodeDirName,
+                                       unicodeFileName,
+                                       QFileInfo{downloadSourcePath}.fileName(),
+                                       largeDirectoryNames.first(),
+                                       largeDirectoryNames.last()}),
+               QStringLiteral("multi-batch directory listing should preserve all entry names"));
     allPassed &= validateDownload(host, port, unicodeFilePath, QByteArray{"unicode content"});
 
     QString const emptyFilePath{tempDir.filePath(QStringLiteral("empty_%1.txt").arg(uniqueSuffix))};
@@ -676,6 +873,38 @@ int main(int argc, char* argv[])
     allPassed &= expect(!QFileInfo::exists(deleteDirPath),
                         QStringLiteral("delete directory should remove recursively"));
 
+    QString const junctionTargetPath{
+        tempDir.filePath(QStringLiteral("junction-target-%1").arg(uniqueSuffix))};
+    QString const junctionDeleteRoot{
+        tempDir.filePath(QStringLiteral("junction-delete-root-%1").arg(uniqueSuffix))};
+    QString const junctionPath{junctionDeleteRoot + QStringLiteral("/linked")};
+    QString const junctionSentinelPath{junctionTargetPath + QStringLiteral("/sentinel.txt")};
+    QDir{}.mkpath(junctionTargetPath);
+    QDir{}.mkpath(junctionDeleteRoot);
+    {
+        QFile sentinel{junctionSentinelPath};
+        sentinel.open(QIODevice::WriteOnly);
+        sentinel.write("keep me");
+    }
+    bool const junctionCreated{createDirectoryJunction(junctionPath, junctionTargetPath)};
+    allPassed &= expect(junctionCreated, QStringLiteral("test junction should be created"));
+    if (junctionCreated)
+    {
+        ResponseBundle const junctionDeleteResponse{
+            sendCommand(host,
+                        port,
+                        remote_control::Command::DeleteFile,
+                        remote_control::encodeUtf8(junctionDeleteRoot))};
+        allPassed &= validateStatusReply(junctionDeleteResponse,
+                                         remote_control::Command::DeleteFile,
+                                         true,
+                                         QStringLiteral("junction parent delete request"));
+        allPassed &= expect(!QFileInfo::exists(junctionDeleteRoot),
+                            QStringLiteral("junction parent should be removed"));
+        allPassed &= expect(QFileInfo::exists(junctionSentinelPath),
+                            QStringLiteral("junction target contents should remain intact"));
+    }
+
     ResponseBundle const deleteMissingResponse{
         sendCommand(host,
                     port,
@@ -686,13 +915,13 @@ int main(int argc, char* argv[])
                                      false,
                                      QStringLiteral("delete missing target request"));
 
-    constexpr int WatchFrameCount{2};
-    ResponseBundle const watchResponse{requestWatchFrames(host, port, WatchFrameCount)};
-    allPassed &= expect(watchResponse.error.isEmpty(),
+    constexpr int ScreenFrameCount{2};
+    ResponseBundle const screenStreamResponse{requestScreenFrames(host, port, ScreenFrameCount)};
+    allPassed &= expect(screenStreamResponse.error.isEmpty(),
                         QStringLiteral("persistent watch screen requests should succeed"));
-    allPassed &= expect(watchResponse.packets.size() == WatchFrameCount,
+    allPassed &= expect(screenStreamResponse.packets.size() == ScreenFrameCount,
                         QStringLiteral("one monitor connection should return two image packets"));
-    for (remote_control::Packet const& packet : watchResponse.packets)
+    for (remote_control::Packet const& packet : screenStreamResponse.packets)
     {
         QImage image;
         bool const imageLoaded{image.loadFromData(packet.payload, "PNG")};
@@ -701,6 +930,15 @@ int main(int argc, char* argv[])
         allPassed &= expect(imageLoaded && !image.isNull(),
                             QStringLiteral("watch screen image should be non-empty"));
     }
+
+    constexpr int PipelinedScreenFrameCount{2};
+    ResponseBundle const pipelinedScreenStreamResponse{
+        requestPipelinedScreenFrames(host, port, PipelinedScreenFrameCount)};
+    allPassed &= expect(pipelinedScreenStreamResponse.error.isEmpty(),
+                        QStringLiteral("pipelined watch requests should remain connected"));
+    allPassed &=
+        expect(pipelinedScreenStreamResponse.packets.size() == PipelinedScreenFrameCount,
+               QStringLiteral("one coalesced request should run after the active monitor frame"));
 
     QPoint const cursorPosition{QCursor::pos()};
     remote_control::MouseEventPacket mouseEvent;

@@ -1,19 +1,19 @@
 add_executable(RemoteControlClient
     ClientMain.cpp
-    ControlConnectionWorker.cpp
-    DownloadWorker.cpp
+    ControlStreamWorker.cpp
+    FileDownloadWorker.cpp
     MainWindow.cpp
     MainWindow.ui
     RemoteClient.cpp
-    WatchConnectionWorker.cpp
-    WatchWindow.cpp
-    WatchWindow.ui
-    ${PROJECT_SOURCE_DIR}/include/client/ControlConnectionWorker.h
-    ${PROJECT_SOURCE_DIR}/include/client/DownloadWorker.h
+    RemoteScreenWindow.cpp
+    RemoteScreenWindow.ui
+    ScreenStreamWorker.cpp
+    ${PROJECT_SOURCE_DIR}/include/client/ControlStreamWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/FileDownloadWorker.h
     ${PROJECT_SOURCE_DIR}/include/client/MainWindow.h
     ${PROJECT_SOURCE_DIR}/include/client/RemoteClient.h
-    ${PROJECT_SOURCE_DIR}/include/client/WatchConnectionWorker.h
-    ${PROJECT_SOURCE_DIR}/include/client/WatchWindow.h
+    ${PROJECT_SOURCE_DIR}/include/client/RemoteScreenWindow.h
+    ${PROJECT_SOURCE_DIR}/include/client/ScreenStreamWorker.h
 )
 
 target_include_directories(RemoteControlClient PRIVATE

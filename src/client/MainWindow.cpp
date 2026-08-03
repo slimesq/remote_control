@@ -1,7 +1,7 @@
 #include "client/MainWindow.h"
 
 #include "client/RemoteClient.h"
-#include "client/WatchWindow.h"
+#include "client/RemoteScreenWindow.h"
 #include "ui_MainWindow.h"
 
 #include <QFileDialog>
@@ -95,7 +95,7 @@ void restoreDirectoryStateAfterFailure(QTreeWidgetItem* _item)
     }
 }
 
-constexpr int TreeHeaderMinimumSectionSize{140};
+constexpr int DirectoryTreeHeaderMinimumSectionSize{140};
 constexpr int DownloadProgressMaximum{100};
 constexpr int ShortStatusMessageDurationMs{3000};
 constexpr int LongStatusMessageDurationMs{5000};
@@ -111,20 +111,20 @@ MainWindow::MainWindow(QWidget* _parent)
     this->m_ui->mainSplitter->setStretchFactor(0, 3);
     this->m_ui->mainSplitter->setStretchFactor(1, 2);
 
-    auto* const treeHeader{this->m_ui->treeWidget->header()};
-    treeHeader->setStretchLastSection(true);
-    treeHeader->setMinimumSectionSize(TreeHeaderMinimumSectionSize);
+    auto* const directoryTreeHeader{this->m_ui->directoryTree->header()};
+    directoryTreeHeader->setStretchLastSection(true);
+    directoryTreeHeader->setMinimumSectionSize(DirectoryTreeHeaderMinimumSectionSize);
 
-    auto* const fileHeader{this->m_ui->fileTable->horizontalHeader()};
-    fileHeader->setStretchLastSection(false);
-    fileHeader->setSectionResizeMode(0, QHeaderView::Stretch);
-    fileHeader->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    auto* const fileTableHeader{this->m_ui->fileTable->horizontalHeader()};
+    fileTableHeader->setStretchLastSection(false);
+    fileTableHeader->setSectionResizeMode(0, QHeaderView::Stretch);
+    fileTableHeader->setSectionResizeMode(1, QHeaderView::ResizeToContents);
 
     statusBar()->showMessage(
         tr("Enter a host, test the connection, and then browse the remote machine."));
     this->wireSignals();
-    this->m_client->setEndpoint(this->m_ui->hostEdit->text().trimmed(),
-                                static_cast<quint16>(this->m_ui->portSpin->value()));
+    this->m_client->setEndpoint(this->m_ui->serverHostEdit->text().trimmed(),
+                                static_cast<quint16>(this->m_ui->serverPortSpinBox->value()));
     this->updateActionState();
 }
 
@@ -132,53 +132,53 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::setEndpoint(QString const& _host, quint16 _port)
 {
-    this->m_ui->hostEdit->setText(_host);
-    this->m_ui->portSpin->setValue(_port);
+    this->m_ui->serverHostEdit->setText(_host);
+    this->m_ui->serverPortSpinBox->setValue(_port);
     this->m_client->setEndpoint(_host.trimmed(), _port);
 }
 
 QProgressDialog* MainWindow::ensureDownloadProgressDialog()
 {
-    if (!this->m_downloadProgress)
+    if (!this->m_downloadProgressDialog)
     {
-        this->m_downloadProgress =
+        this->m_downloadProgressDialog =
             new QProgressDialog{tr("Downloading..."), QString{}, 0, DownloadProgressMaximum, this};
-        this->m_downloadProgress->setAutoClose(false);
-        this->m_downloadProgress->setAutoReset(false);
-        this->m_downloadProgress->setMinimumDuration(0);
-        this->m_downloadProgress->setWindowModality(Qt::NonModal);
-        this->m_downloadProgress->hide();
+        this->m_downloadProgressDialog->setAutoClose(false);
+        this->m_downloadProgressDialog->setAutoReset(false);
+        this->m_downloadProgressDialog->setMinimumDuration(0);
+        this->m_downloadProgressDialog->setWindowModality(Qt::NonModal);
+        this->m_downloadProgressDialog->hide();
     }
 
-    return this->m_downloadProgress;
+    return this->m_downloadProgressDialog;
 }
 
 void MainWindow::updateActionState()
 {
     // Derive UI permissions from endpoint validity, verification, selection, and mutually
     // exclusive operation states so no action can race an incompatible request.
-    bool const hasEndpoint{!this->m_ui->hostEdit->text().trimmed().isEmpty() &&
-                           this->m_ui->portSpin->value() > 0};
+    bool const hasEndpoint{!this->m_ui->serverHostEdit->text().trimmed().isEmpty() &&
+                           this->m_ui->serverPortSpinBox->value() > 0};
     bool const canBrowseRemote{hasEndpoint && this->m_connectionVerified};
     QString const selectedFilePath{this->currentSelectedFilePath()};
     bool const hasSelectedFile{!selectedFilePath.isEmpty()};
     bool const hasActiveDownload{this->hasActiveDownload()};
     bool const selectedFileIsDownloading{this->isFileDownloading(selectedFilePath)};
 
-    this->m_ui->hostEdit->setEnabled(!hasActiveDownload);
-    this->m_ui->portSpin->setEnabled(!hasActiveDownload);
-    this->m_ui->testButton->setEnabled(hasEndpoint && !this->m_connectionTestPending);
-    this->m_ui->refreshButton->setEnabled(canBrowseRemote && !this->m_driveListPending);
-    this->m_ui->watchButton->setEnabled(canBrowseRemote);
-    this->m_ui->treeWidget->setEnabled(canBrowseRemote);
+    this->m_ui->serverHostEdit->setEnabled(!hasActiveDownload);
+    this->m_ui->serverPortSpinBox->setEnabled(!hasActiveDownload);
+    this->m_ui->testConnectionButton->setEnabled(hasEndpoint && !this->m_connectionTestPending);
+    this->m_ui->refreshDriveListButton->setEnabled(canBrowseRemote && !this->m_driveListPending);
+    this->m_ui->remoteScreenButton->setEnabled(canBrowseRemote);
+    this->m_ui->directoryTree->setEnabled(canBrowseRemote);
     this->m_ui->fileTable->setEnabled(canBrowseRemote && this->m_ui->fileTable->rowCount() > 0);
     this->m_ui->openFileButton->setEnabled(canBrowseRemote && hasSelectedFile &&
-                                           !this->m_fileCommandPending);
-    this->m_ui->downloadFileButton->setEnabled(canBrowseRemote && hasSelectedFile &&
-                                               !hasActiveDownload);
-    this->m_ui->deleteFileButton->setEnabled(canBrowseRemote && hasSelectedFile &&
-                                             !this->m_fileCommandPending &&
-                                             !selectedFileIsDownloading);
+                                           !this->m_remotePathCommandPending);
+    this->m_ui->downloadRemoteFileButton->setEnabled(canBrowseRemote && hasSelectedFile &&
+                                                     !hasActiveDownload);
+    this->m_ui->deleteRemotePathButton->setEnabled(canBrowseRemote && hasSelectedFile &&
+                                                   !this->m_remotePathCommandPending &&
+                                                   !selectedFileIsDownloading);
 }
 
 void MainWindow::setActiveDownloadPath(QString const& _remotePath)
@@ -202,9 +202,9 @@ void MainWindow::handleEndpointChanged()
     this->m_connectionVerified = false;
     this->m_connectionTestPending = false;
     this->m_driveListPending = false;
-    this->m_fileCommandPending = false;
-    this->m_client->setEndpoint(this->m_ui->hostEdit->text().trimmed(),
-                                static_cast<quint16>(this->m_ui->portSpin->value()));
+    this->m_remotePathCommandPending = false;
+    this->m_client->setEndpoint(this->m_ui->serverHostEdit->text().trimmed(),
+                                static_cast<quint16>(this->m_ui->serverPortSpinBox->value()));
     this->clearRemoteView();
     statusBar()->showMessage(tr("Connection settings changed. Test the connection again."));
 }
@@ -257,12 +257,12 @@ void MainWindow::downloadSelectedFile()
     progressDialog->show();
     this->setActiveDownloadPath(filePath);
     statusBar()->showMessage(tr("Downloading: %1").arg(filePath));
-    this->m_client->downloadFile(filePath, savePath);
+    this->m_client->downloadRemoteFile(filePath, savePath);
 }
 
 void MainWindow::deleteSelectedFile()
 {
-    if (this->m_fileCommandPending)
+    if (this->m_remotePathCommandPending)
     {
         return;
     }
@@ -272,33 +272,33 @@ void MainWindow::deleteSelectedFile()
     {
         return;
     }
-    this->m_fileCommandPending = true;
+    this->m_remotePathCommandPending = true;
     statusBar()->showMessage(tr("Deleting: %1").arg(filePath));
     this->updateActionState();
-    this->m_client->deleteFile(filePath);
+    this->m_client->deleteRemotePath(filePath);
 }
 
 void MainWindow::clearRemoteView()
 {
-    this->m_ui->treeWidget->clear();
+    this->m_ui->directoryTree->clear();
     this->m_ui->fileTable->setRowCount(0);
     this->updateActionState();
 }
 
-void MainWindow::showWatchWindow()
+void MainWindow::showRemoteScreenWindow()
 {
-    if (!this->m_watchWindow)
+    if (!this->m_remoteScreenWindow)
     {
-        this->m_watchWindow = new WatchWindow{this->m_client, this};
+        this->m_remoteScreenWindow = new RemoteScreenWindow{this->m_client, this};
     }
-    this->m_watchWindow->show();
-    this->m_watchWindow->raise();
-    this->m_watchWindow->activateWindow();
+    this->m_remoteScreenWindow->show();
+    this->m_remoteScreenWindow->raise();
+    this->m_remoteScreenWindow->activateWindow();
 }
 
 void MainWindow::openSelectedFile()
 {
-    if (this->m_fileCommandPending)
+    if (this->m_remotePathCommandPending)
     {
         return;
     }
@@ -308,22 +308,24 @@ void MainWindow::openSelectedFile()
     {
         return;
     }
-    this->m_fileCommandPending = true;
+    this->m_remotePathCommandPending = true;
     statusBar()->showMessage(tr("Opening: %1").arg(filePath));
     this->updateActionState();
-    this->m_client->runFile(filePath);
+    this->m_client->openRemoteFile(filePath);
 }
 
 void MainWindow::wireSignals()
 {
     // Endpoint: invalidates stale server state and owns the connection-test lifecycle.
-    connect(
-        this->m_ui->hostEdit, &QLineEdit::textChanged, this, &MainWindow::handleEndpointChanged);
-    connect(this->m_ui->portSpin,
+    connect(this->m_ui->serverHostEdit,
+            &QLineEdit::textChanged,
+            this,
+            &MainWindow::handleEndpointChanged);
+    connect(this->m_ui->serverPortSpinBox,
             qOverload<int>(&QSpinBox::valueChanged),
             this,
             &MainWindow::handleEndpointChanged);
-    connect(this->m_ui->testButton, &QPushButton::clicked, this, [this] {
+    connect(this->m_ui->testConnectionButton, &QPushButton::clicked, this, [this] {
         this->m_connectionTestPending = true;
         statusBar()->showMessage(tr("Testing the connection..."));
         this->updateActionState();
@@ -347,26 +349,28 @@ void MainWindow::wireSignals()
         });
 
     // Remote browser: tracks the current directory and maintains its cached contents.
-    connect(this->m_ui->refreshButton, &QPushButton::clicked, this, [this] {
+    connect(this->m_ui->refreshDriveListButton, &QPushButton::clicked, this, [this] {
         this->m_driveListPending = true;
         statusBar()->showMessage(tr("Loading drive list..."));
         this->updateActionState();
-        this->m_client->requestDrives();
+        this->m_client->requestDriveList();
     });
-    connect(this->m_ui->treeWidget,
+    connect(this->m_ui->directoryTree,
             &QTreeWidget::currentItemChanged,
             this,
             [this](QTreeWidgetItem* _current, QTreeWidgetItem*) {
                 // QTreeWidget updates currentItem before emitting this signal.
                 this->requestSelectedDirectory(_current);
             });
-    connect(
-        this->m_ui->treeWidget, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem* _item) {
-            if (!hasDirectoryCache(directoryLoadState(_item)))
-            {
-                this->requestSelectedDirectory(_item);
-            }
-        });
+    connect(this->m_ui->directoryTree,
+            &QTreeWidget::itemExpanded,
+            this,
+            [this](QTreeWidgetItem* _item) {
+                if (!hasDirectoryCache(directoryLoadState(_item)))
+                {
+                    this->requestSelectedDirectory(_item);
+                }
+            });
     connect(this->m_client,
             &RemoteClient::driveListFinished,
             this,
@@ -425,12 +429,12 @@ void MainWindow::wireSignals()
                 QMenu menu{this};
                 QAction* const downloadAction{menu.addAction(tr("Download File"))};
                 QAction* const deleteAction{menu.addAction(tr("Delete File"))};
-                QAction* const runAction{menu.addAction(tr("Open File"))};
+                QAction* const openAction{menu.addAction(tr("Open File"))};
                 QString const selectedPath{this->currentSelectedFilePath()};
                 downloadAction->setEnabled(!this->hasActiveDownload());
-                deleteAction->setEnabled(!this->m_fileCommandPending &&
+                deleteAction->setEnabled(!this->m_remotePathCommandPending &&
                                          !this->isFileDownloading(selectedPath));
-                runAction->setEnabled(!this->m_fileCommandPending);
+                openAction->setEnabled(!this->m_remotePathCommandPending);
                 QAction const* const chosen{
                     menu.exec(this->m_ui->fileTable->viewport()->mapToGlobal(_pos))};
                 if (chosen == downloadAction)
@@ -441,7 +445,7 @@ void MainWindow::wireSignals()
                 {
                     this->deleteSelectedFile();
                 }
-                else if (chosen == runAction)
+                else if (chosen == openAction)
                 {
                     this->openSelectedFile();
                 }
@@ -449,16 +453,18 @@ void MainWindow::wireSignals()
 
     // File commands: runs or deletes a selected remote file and clears the pending state.
     connect(this->m_ui->openFileButton, &QPushButton::clicked, this, &MainWindow::openSelectedFile);
-    connect(
-        this->m_ui->deleteFileButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedFile);
+    connect(this->m_ui->deleteRemotePathButton,
+            &QPushButton::clicked,
+            this,
+            &MainWindow::deleteSelectedFile);
     connect(this->m_client,
-            &RemoteClient::fileCommandFinished,
+            &RemoteClient::remotePathCommandFinished,
             this,
             [this](remote_control::Command _command,
                    QString const& _path,
                    bool _success,
                    QString const& _message) {
-                this->m_fileCommandPending = false;
+                this->m_remotePathCommandPending = false;
                 this->updateActionState();
                 statusBar()->showMessage(
                     _message,
@@ -471,7 +477,7 @@ void MainWindow::wireSignals()
 
                 if (_command == remote_control::Command::DeleteFile)
                 {
-                    if (auto* const item{this->m_ui->treeWidget->currentItem()})
+                    if (auto* const item{this->m_ui->directoryTree->currentItem()})
                     {
                         this->requestSelectedDirectory(item, true);
                     }
@@ -484,7 +490,7 @@ void MainWindow::wireSignals()
             });
 
     // Downloads: owns the active-download state, progress dialog, and final notification.
-    connect(this->m_ui->downloadFileButton,
+    connect(this->m_ui->downloadRemoteFileButton,
             &QPushButton::clicked,
             this,
             &MainWindow::downloadSelectedFile);
@@ -492,7 +498,7 @@ void MainWindow::wireSignals()
             &RemoteClient::downloadProgress,
             this,
             [this](QString const&, qint64 _received, qint64 _total) {
-                if (!this->m_downloadProgress)
+                if (!this->m_downloadProgressDialog)
                 {
                     return;
                 }
@@ -503,8 +509,8 @@ void MainWindow::wireSignals()
                                                          DownloadProgressMaximum),
                                         DownloadProgressMaximum)
                                : 0};
-                this->m_downloadProgress->setMaximum(DownloadProgressMaximum);
-                this->m_downloadProgress->setValue(progressValue);
+                this->m_downloadProgressDialog->setMaximum(DownloadProgressMaximum);
+                this->m_downloadProgressDialog->setValue(progressValue);
             });
     connect(
         this->m_client,
@@ -512,9 +518,9 @@ void MainWindow::wireSignals()
         this,
         [this](QString const&, QString const& _localPath, bool _success, QString const& _message) {
             this->setActiveDownloadPath({});
-            if (this->m_downloadProgress)
+            if (this->m_downloadProgressDialog)
             {
-                this->m_downloadProgress->hide();
+                this->m_downloadProgressDialog->hide();
             }
             statusBar()->showMessage(
                 _message, _success ? ShortStatusMessageDurationMs : LongStatusMessageDurationMs);
@@ -529,11 +535,15 @@ void MainWindow::wireSignals()
             }
         });
 
-    // Monitoring and control: reports persistent screen-watch and control-channel results.
-    connect(this->m_ui->watchButton, &QPushButton::clicked, this, &MainWindow::showWatchWindow);
-    connect(this->m_client, &RemoteClient::watchFailed, this, [this](QString const& _message) {
-        statusBar()->showMessage(_message, LongStatusMessageDurationMs);
-    });
+    // Screen streaming and control: report persistent channel results.
+    connect(this->m_ui->remoteScreenButton,
+            &QPushButton::clicked,
+            this,
+            &MainWindow::showRemoteScreenWindow);
+    connect(
+        this->m_client, &RemoteClient::screenStreamFailed, this, [this](QString const& _message) {
+            statusBar()->showMessage(_message, LongStatusMessageDurationMs);
+        });
     connect(this->m_client,
             &RemoteClient::controlCommandFinished,
             this,
@@ -585,7 +595,7 @@ void MainWindow::requestSelectedDirectory(QTreeWidgetItem* _item, bool _forceRef
                           state == DirectoryLoadState::Loaded ? DirectoryLoadState::Refreshing
                                                               : DirectoryLoadState::Loading);
     statusBar()->showMessage(tr("Loading: %1").arg(path));
-    this->m_client->requestDirectory(path);
+    this->m_client->requestDirectoryListing(path);
 }
 
 void MainWindow::displayDirectoryFiles(QString const& _path,
@@ -617,13 +627,13 @@ void MainWindow::displayDirectoryFiles(QString const& _path,
 
 void MainWindow::populateDriveTree(QStringList const& _drives)
 {
-    this->m_ui->treeWidget->clear();
+    this->m_ui->directoryTree->clear();
     this->m_ui->fileTable->setRowCount(0);
     QTreeWidgetItem* firstDriveItem{nullptr};
     for (QString const& drive : _drives)
     {
         QString const normalized{this->normalizeDrive(drive)};
-        auto* const item{new QTreeWidgetItem{this->m_ui->treeWidget}};
+        auto* const item{new QTreeWidgetItem{this->m_ui->directoryTree}};
         item->setText(0, normalized);
         item->setData(0, PathRole, normalized + '\\');
         setDirectoryLoadState(item, DirectoryLoadState::Unloaded);
@@ -641,7 +651,7 @@ void MainWindow::populateDriveTree(QStringList const& _drives)
         return;
     }
 
-    this->m_ui->treeWidget->setCurrentItem(firstDriveItem);
+    this->m_ui->directoryTree->setCurrentItem(firstDriveItem);
 }
 
 void MainWindow::updateDirectoryView(QString const& _path,
@@ -676,7 +686,7 @@ void MainWindow::updateDirectoryView(QString const& _path,
     // Publish the cache before marking the item loaded so observers cannot see partial state.
     item->setData(0, DirectoryEntriesRole, QVariant::fromValue(_entries));
     setDirectoryLoadState(item, DirectoryLoadState::Loaded);
-    if (this->m_ui->treeWidget->currentItem() == item)
+    if (this->m_ui->directoryTree->currentItem() == item)
     {
         this->displayDirectoryFiles(_path, _entries);
     }
@@ -686,7 +696,7 @@ void MainWindow::updateDirectoryView(QString const& _path,
 
 QTreeWidgetItem* MainWindow::findItemByPath(QString const& _path) const
 {
-    QTreeWidgetItemIterator it{this->m_ui->treeWidget};
+    QTreeWidgetItemIterator it{this->m_ui->directoryTree};
     while (*it)
     {
         if ((*it)->data(0, PathRole).toString().compare(_path, Qt::CaseInsensitive) == 0)

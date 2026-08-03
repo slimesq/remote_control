@@ -1,8 +1,8 @@
 #include "client/RemoteClient.h"
 
-#include "client/ControlConnectionWorker.h"
-#include "client/DownloadWorker.h"
-#include "client/WatchConnectionWorker.h"
+#include "client/ControlStreamWorker.h"
+#include "client/FileDownloadWorker.h"
+#include "client/ScreenStreamWorker.h"
 #include "common/Packet.h"
 
 #include <QCoreApplication>
@@ -11,10 +11,28 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
+
 namespace
 {
 
 constexpr int RequestInactivityTimeoutMs{15000};
+
+/**
+ * @brief Orders directory entries with folders first and names in locale-aware order.
+ * @param _left First entry to compare.
+ * @param _right Second entry to compare.
+ * @return true when the first entry should precede the second entry.
+ */
+bool directoryEntryLess(remote_control::FileEntry const& _left,
+                        remote_control::FileEntry const& _right)
+{
+    if (_left.isDirectory != _right.isDirectory)
+    {
+        return _left.isDirectory;
+    }
+    return QString::localeAwareCompare(_left.fileName, _right.fileName) < 0;
+}
 
 }  // namespace
 
@@ -24,9 +42,9 @@ constexpr int RequestInactivityTimeoutMs{15000};
  * The request sends one protocol command, collects its single-packet or multi-packet response,
  * reports the result through its owning RemoteClient, and then releases itself.
  */
-class PendingRequest final : public QObject
+class OneShotRequest final : public QObject
 {
-    Q_DECLARE_TR_FUNCTIONS(PendingRequest)
+    Q_DECLARE_TR_FUNCTIONS(OneShotRequest)
 
 public:
     /**
@@ -39,7 +57,7 @@ public:
      * @param _payload Command-specific payload.
      * @param _context Command-specific path or label.
      */
-    PendingRequest(RemoteClient* _client,
+    OneShotRequest(RemoteClient* _client,
                    QString const& _host,
                    quint16 _port,
                    quint64 _generation,
@@ -57,11 +75,11 @@ public:
           m_timeoutTimer{new QTimer{this}}
     {
         this->m_socket.setParent(this);
-        connect(&this->m_socket, &QTcpSocket::connected, this, &PendingRequest::onConnected);
-        connect(&this->m_socket, &QTcpSocket::readyRead, this, &PendingRequest::onReadyRead);
-        connect(&this->m_socket, &QTcpSocket::disconnected, this, &PendingRequest::onDisconnected);
+        connect(&this->m_socket, &QTcpSocket::connected, this, &OneShotRequest::onConnected);
+        connect(&this->m_socket, &QTcpSocket::readyRead, this, &OneShotRequest::onReadyRead);
+        connect(&this->m_socket, &QTcpSocket::disconnected, this, &OneShotRequest::onDisconnected);
         connect(
-            &this->m_socket, &QTcpSocket::errorOccurred, this, &PendingRequest::onErrorOccurred);
+            &this->m_socket, &QTcpSocket::errorOccurred, this, &OneShotRequest::onErrorOccurred);
         this->m_timeoutTimer->setSingleShot(true);
         this->m_timeoutTimer->setInterval(RequestInactivityTimeoutMs);
         connect(this->m_timeoutTimer, &QTimer::timeout, this, [this] {
@@ -184,7 +202,7 @@ private:
          * @brief Tracks entry into a Qt event callback.
          * @param _request Request whose callback depth is tracked.
          */
-        explicit CallbackScope(PendingRequest* _request) : m_request{_request}
+        explicit CallbackScope(OneShotRequest* _request) : m_request{_request}
         {
             ++this->m_request->m_callbackDepth;
         }
@@ -202,7 +220,7 @@ private:
         }
 
     private:
-        PendingRequest* m_request{nullptr};  ///< Request whose callback depth is guarded.
+        OneShotRequest* m_request{nullptr};  ///< Request whose callback depth is guarded.
     };
 
     /** @brief Deletes the request after active callbacks have unwound. */
@@ -330,6 +348,8 @@ private:
             return;
         }
 
+        // The server enumerates incrementally, so restore the stable UI order after collection.
+        std::sort(this->m_entries.begin(), this->m_entries.end(), directoryEntryLess);
         this->markFinished();
         emit this->m_client->directoryListFinished(
             this->m_context, this->m_entries, true, tr("Directory loaded."));
@@ -353,7 +373,7 @@ private:
         this->markFinished();
         QString const resultMessage{message.isEmpty() ? tr("The command completed successfully.")
                                                       : message};
-        emit this->m_client->fileCommandFinished(
+        emit this->m_client->remotePathCommandFinished(
             this->m_command, this->m_context, true, resultMessage);
         this->m_socket.disconnectFromHost();
     }
@@ -384,7 +404,7 @@ private:
                 break;
             case remote_control::Command::RunFile:
             case remote_control::Command::DeleteFile:
-                emit this->m_client->fileCommandFinished(
+                emit this->m_client->remotePathCommandFinished(
                     this->m_command, this->m_context, false, _message);
                 break;
             default:
@@ -414,123 +434,134 @@ private:
 
 RemoteClient::RemoteClient(QObject* _parent)
     : QObject{_parent},
-      m_watchThread{new QThread{this}},
-      m_watchWorker{new WatchConnectionWorker{}},
-      m_controlThread{new QThread{this}},
-      m_controlWorker{new ControlConnectionWorker{}},
-      m_downloadThread{new QThread{this}},
-      m_downloadWorker{new DownloadWorker{}}
+      m_screenStreamThread{new QThread{this}},
+      m_screenStreamWorker{new ScreenStreamWorker{}},
+      m_controlStreamThread{new QThread{this}},
+      m_controlStreamWorker{new ControlStreamWorker{}},
+      m_fileDownloadThread{new QThread{this}},
+      m_fileDownloadWorker{new FileDownloadWorker{}}
 {
     qRegisterMetaType<remote_control::Command>();
 
-    this->m_watchWorker->moveToThread(this->m_watchThread);
-    connect(this->m_watchThread, &QThread::finished, this->m_watchWorker, &QObject::deleteLater);
+    this->m_screenStreamWorker->moveToThread(this->m_screenStreamThread);
+    connect(this->m_screenStreamThread,
+            &QThread::finished,
+            this->m_screenStreamWorker,
+            &QObject::deleteLater);
     // Generation checks suppress callbacks emitted by a request that belonged to an old endpoint
-    // or to a watch stream that has since been stopped and restarted.
-    connect(this->m_watchWorker,
-            &WatchConnectionWorker::frameReady,
+    // or to a screen stream that has since been stopped and restarted.
+    connect(this->m_screenStreamWorker,
+            &ScreenStreamWorker::frameReady,
             this,
             [this](quint64 _generation, QImage const& _image) {
-                if (_generation == this->m_watchGeneration)
+                if (_generation == this->m_screenStreamGeneration)
                 {
-                    emit this->watchFrameReady(_image);
+                    emit this->screenFrameReady(_image);
                 }
             });
-    connect(this->m_watchWorker,
-            &WatchConnectionWorker::failed,
+    connect(this->m_screenStreamWorker,
+            &ScreenStreamWorker::failed,
             this,
             [this](quint64 _generation, QString const& _message) {
-                if (_generation == this->m_watchGeneration)
+                if (_generation == this->m_screenStreamGeneration)
                 {
-                    emit this->watchFailed(_message);
+                    emit this->screenStreamFailed(_message);
                 }
             });
-    connect(this->m_watchWorker,
-            &WatchConnectionWorker::requestFinished,
+    connect(this->m_screenStreamWorker,
+            &ScreenStreamWorker::requestFinished,
             this,
             [this](quint64 _generation) {
-                if (_generation == this->m_watchGeneration)
+                if (_generation == this->m_screenStreamGeneration)
                 {
-                    this->setWatchFramePending(false);
-                    emit this->watchRequestFinished();
+                    this->setScreenFramePending(false);
+                    emit this->screenFrameRequestFinished();
                 }
             });
 
-    this->m_controlWorker->moveToThread(this->m_controlThread);
-    connect(
-        this->m_controlThread, &QThread::finished, this->m_controlWorker, &QObject::deleteLater);
+    this->m_controlStreamWorker->moveToThread(this->m_controlStreamThread);
+    connect(this->m_controlStreamThread,
+            &QThread::finished,
+            this->m_controlStreamWorker,
+            &QObject::deleteLater);
     // Control results are forwarded only while they belong to the current persistent channel.
-    connect(this->m_controlWorker,
-            &ControlConnectionWorker::commandCompleted,
+    connect(this->m_controlStreamWorker,
+            &ControlStreamWorker::commandCompleted,
             this,
             [this](quint64 _generation,
                    remote_control::Command _command,
                    QString const& _context,
                    QString const& _message) {
-                if (_generation == this->m_controlGeneration)
+                if (_generation == this->m_controlStreamGeneration)
                 {
                     emit this->controlCommandFinished(_command, _context, true, _message);
                 }
             });
-    connect(this->m_controlWorker,
-            &ControlConnectionWorker::commandFailed,
+    connect(this->m_controlStreamWorker,
+            &ControlStreamWorker::commandFailed,
             this,
             [this](quint64 _generation,
                    remote_control::Command _command,
                    QString const& _context,
                    QString const& _message) {
-                if (_generation == this->m_controlGeneration)
+                if (_generation == this->m_controlStreamGeneration)
                 {
                     emit this->controlCommandFinished(_command, _context, false, _message);
                 }
             });
 
-    this->m_downloadWorker->moveToThread(this->m_downloadThread);
-    connect(
-        this->m_downloadThread, &QThread::finished, this->m_downloadWorker, &QObject::deleteLater);
-    connect(
-        this->m_downloadWorker, &DownloadWorker::progress, this, &RemoteClient::downloadProgress);
-    connect(
-        this->m_downloadWorker, &DownloadWorker::finished, this, &RemoteClient::downloadFinished);
+    this->m_fileDownloadWorker->moveToThread(this->m_fileDownloadThread);
+    connect(this->m_fileDownloadThread,
+            &QThread::finished,
+            this->m_fileDownloadWorker,
+            &QObject::deleteLater);
+    connect(this->m_fileDownloadWorker,
+            &FileDownloadWorker::progress,
+            this,
+            &RemoteClient::downloadProgress);
+    connect(this->m_fileDownloadWorker,
+            &FileDownloadWorker::finished,
+            this,
+            &RemoteClient::downloadFinished);
 
-    this->m_watchThread->start();
-    this->m_controlThread->start();
-    this->m_downloadThread->start();
+    this->m_screenStreamThread->start();
+    this->m_controlStreamThread->start();
+    this->m_fileDownloadThread->start();
 }
 
 RemoteClient::~RemoteClient()
 {
     // Shut down each worker in its owning thread before stopping and joining that thread.
-    if (this->m_watchThread->isRunning())
+    if (this->m_screenStreamThread->isRunning())
     {
         // Blocking delivery completes worker-owned cleanup before the event loop is stopped.
         QMetaObject::invokeMethod(
-            this->m_watchWorker,
-            [worker = this->m_watchWorker] { worker->shutdown(); },
+            this->m_screenStreamWorker,
+            [worker = this->m_screenStreamWorker] { worker->shutdown(); },
             Qt::BlockingQueuedConnection);
         // Request a normal event-loop exit, then wait until the thread has fully terminated.
-        this->m_watchThread->quit();
-        this->m_watchThread->wait();
+        this->m_screenStreamThread->quit();
+        this->m_screenStreamThread->wait();
     }
 
-    if (this->m_controlThread->isRunning())
+    if (this->m_controlStreamThread->isRunning())
     {
         QMetaObject::invokeMethod(
-            this->m_controlWorker,
-            [worker = this->m_controlWorker] { worker->shutdown(); },
+            this->m_controlStreamWorker,
+            [worker = this->m_controlStreamWorker] { worker->shutdown(); },
             Qt::BlockingQueuedConnection);
-        this->m_controlThread->quit();
-        this->m_controlThread->wait();
+        this->m_controlStreamThread->quit();
+        this->m_controlStreamThread->wait();
     }
 
-    if (this->m_downloadThread->isRunning())
+    if (this->m_fileDownloadThread->isRunning())
     {
         QMetaObject::invokeMethod(
-            this->m_downloadWorker,
-            [worker = this->m_downloadWorker] { worker->shutdown(); },
+            this->m_fileDownloadWorker,
+            [worker = this->m_fileDownloadWorker] { worker->shutdown(); },
             Qt::BlockingQueuedConnection);
-        this->m_downloadThread->quit();
-        this->m_downloadThread->wait();
+        this->m_fileDownloadThread->quit();
+        this->m_fileDownloadThread->wait();
     }
 }
 
@@ -538,25 +569,25 @@ void RemoteClient::setEndpoint(QString const& _host, quint16 _port)
 {
     // Changing either endpoint component invalidates every persistent stream and its callbacks.
     bool const endpointChanged{this->m_host != _host || this->m_port != _port};
-    bool const watchRequestWasPending{endpointChanged && this->hasPendingWatchFrame()};
+    bool const screenFrameRequestWasPending{endpointChanged && this->hasPendingScreenFrame()};
     if (endpointChanged)
     {
         ++this->m_endpointGeneration;
-        this->stopWatchStream();
+        this->stopScreenStream();
         this->stopControlStream();
     }
     this->m_host = _host;
     this->m_port = _port;
-    if (watchRequestWasPending)
+    if (screenFrameRequestWasPending)
     {
         // The obsolete worker completion will be discarded, so release the visible scheduler now.
-        emit this->watchRequestFinished();
+        emit this->screenFrameRequestFinished();
     }
 }
 
 void RemoteClient::testConnection()
 {
-    auto* const request{new PendingRequest{this,
+    auto* const request{new OneShotRequest{this,
                                            this->m_host,
                                            this->m_port,
                                            this->m_endpointGeneration,
@@ -566,9 +597,9 @@ void RemoteClient::testConnection()
     request->start();
 }
 
-void RemoteClient::requestDrives()
+void RemoteClient::requestDriveList()
 {
-    auto* const request{new PendingRequest{this,
+    auto* const request{new OneShotRequest{this,
                                            this->m_host,
                                            this->m_port,
                                            this->m_endpointGeneration,
@@ -578,9 +609,9 @@ void RemoteClient::requestDrives()
     request->start();
 }
 
-void RemoteClient::requestDirectory(QString const& _path)
+void RemoteClient::requestDirectoryListing(QString const& _path)
 {
-    auto* const request{new PendingRequest{this,
+    auto* const request{new OneShotRequest{this,
                                            this->m_host,
                                            this->m_port,
                                            this->m_endpointGeneration,
@@ -590,9 +621,9 @@ void RemoteClient::requestDirectory(QString const& _path)
     request->start();
 }
 
-void RemoteClient::runFile(QString const& _path)
+void RemoteClient::openRemoteFile(QString const& _path)
 {
-    auto* const request{new PendingRequest{this,
+    auto* const request{new OneShotRequest{this,
                                            this->m_host,
                                            this->m_port,
                                            this->m_endpointGeneration,
@@ -602,9 +633,9 @@ void RemoteClient::runFile(QString const& _path)
     request->start();
 }
 
-void RemoteClient::deleteFile(QString const& _path)
+void RemoteClient::deleteRemotePath(QString const& _path)
 {
-    auto* const request{new PendingRequest{this,
+    auto* const request{new OneShotRequest{this,
                                            this->m_host,
                                            this->m_port,
                                            this->m_endpointGeneration,
@@ -614,61 +645,61 @@ void RemoteClient::deleteFile(QString const& _path)
     request->start();
 }
 
-void RemoteClient::downloadFile(QString const& _remotePath, QString const& _localPath)
+void RemoteClient::downloadRemoteFile(QString const& _remotePath, QString const& _localPath)
 {
     QString const host{this->m_host};
     quint16 const port{this->m_port};
     // Queue the download startup on the worker's thread without blocking the caller.
     // QueuedConnection posts the lambda to the worker thread's event loop and returns immediately.
     QMetaObject::invokeMethod(
-        this->m_downloadWorker,
-        [worker = this->m_downloadWorker, host, port, _remotePath, _localPath] {
+        this->m_fileDownloadWorker,
+        [worker = this->m_fileDownloadWorker, host, port, _remotePath, _localPath] {
             worker->startDownload(host, port, _remotePath, _localPath);
         },
         Qt::QueuedConnection);
 }
 
-void RemoteClient::requestWatchFrame()
+void RemoteClient::requestScreenFrame()
 {
     // The scheduler must wait for requestFinished before starting another frame request.
-    if (this->hasPendingWatchFrame())
+    if (this->hasPendingScreenFrame())
     {
         return;
     }
-    this->setWatchFramePending(true);
+    this->setScreenFramePending(true);
     QString const host{this->m_host};
     quint16 const port{this->m_port};
-    quint64 const generation{this->m_watchGeneration};
+    quint64 const generation{this->m_screenStreamGeneration};
     QMetaObject::invokeMethod(
-        this->m_watchWorker,
-        [worker = this->m_watchWorker, host, port, generation] {
+        this->m_screenStreamWorker,
+        [worker = this->m_screenStreamWorker, host, port, generation] {
             worker->requestFrame(host, port, generation);
         },
         Qt::QueuedConnection);
 }
 
-void RemoteClient::stopWatchStream()
+void RemoteClient::stopScreenStream()
 {
-    ++this->m_watchGeneration;
-    this->setWatchFramePending(false);
+    ++this->m_screenStreamGeneration;
+    this->setScreenFramePending(false);
     QMetaObject::invokeMethod(
-        this->m_watchWorker,
-        [worker = this->m_watchWorker] { worker->closeConnection(); },
+        this->m_screenStreamWorker,
+        [worker = this->m_screenStreamWorker] { worker->closeConnection(); },
         Qt::QueuedConnection);
 }
 
 void RemoteClient::stopControlStream()
 {
-    ++this->m_controlGeneration;
+    ++this->m_controlStreamGeneration;
     QMetaObject::invokeMethod(
-        this->m_controlWorker,
-        [worker = this->m_controlWorker] { worker->closeConnection(); },
+        this->m_controlStreamWorker,
+        [worker = this->m_controlStreamWorker] { worker->closeConnection(); },
         Qt::QueuedConnection);
 }
 
-bool RemoteClient::hasPendingWatchFrame() const noexcept
+bool RemoteClient::hasPendingScreenFrame() const noexcept
 {
-    return this->m_watchPending;
+    return this->m_screenFramePending;
 }
 
 bool RemoteClient::isEndpointGenerationCurrent(quint64 _generation) const noexcept
@@ -676,19 +707,19 @@ bool RemoteClient::isEndpointGenerationCurrent(quint64 _generation) const noexce
     return _generation == this->m_endpointGeneration;
 }
 
-void RemoteClient::setWatchFramePending(bool _pending)
+void RemoteClient::setScreenFramePending(bool _pending)
 {
-    this->m_watchPending = _pending;
+    this->m_screenFramePending = _pending;
 }
 
 void RemoteClient::sendMouseEvent(remote_control::MouseEventPacket const& _event)
 {
     QString const host{this->m_host};
     quint16 const port{this->m_port};
-    quint64 const generation{this->m_controlGeneration};
+    quint64 const generation{this->m_controlStreamGeneration};
     QMetaObject::invokeMethod(
-        this->m_controlWorker,
-        [worker = this->m_controlWorker, host, port, _event, generation] {
+        this->m_controlStreamWorker,
+        [worker = this->m_controlStreamWorker, host, port, _event, generation] {
             worker->sendMouseEvent(host, port, _event, generation);
         },
         Qt::QueuedConnection);
@@ -699,10 +730,10 @@ void RemoteClient::lockRemote()
     QString const host{this->m_host};
     quint16 const port{this->m_port};
     QString const context{tr("Lock")};
-    quint64 const generation{this->m_controlGeneration};
+    quint64 const generation{this->m_controlStreamGeneration};
     QMetaObject::invokeMethod(
-        this->m_controlWorker,
-        [worker = this->m_controlWorker, host, port, context, generation] {
+        this->m_controlStreamWorker,
+        [worker = this->m_controlStreamWorker, host, port, context, generation] {
             worker->sendCommand(
                 host, port, remote_control::Command::LockMachine, context, generation);
         },
@@ -714,10 +745,10 @@ void RemoteClient::unlockRemote()
     QString const host{this->m_host};
     quint16 const port{this->m_port};
     QString const context{tr("Unlock")};
-    quint64 const generation{this->m_controlGeneration};
+    quint64 const generation{this->m_controlStreamGeneration};
     QMetaObject::invokeMethod(
-        this->m_controlWorker,
-        [worker = this->m_controlWorker, host, port, context, generation] {
+        this->m_controlStreamWorker,
+        [worker = this->m_controlStreamWorker, host, port, context, generation] {
             worker->sendCommand(
                 host, port, remote_control::Command::UnlockMachine, context, generation);
         },

@@ -75,7 +75,7 @@ QStatusBar {
     background: #efe7d7;
 }</string>
   </property>
-  <widget class="QWidget" name="centralwidget">
+  <widget class="QWidget" name="centralWidget">
    <layout class="QVBoxLayout" name="rootLayout">
     <property name="spacing">
      <number>12</number>
@@ -156,7 +156,7 @@ QStatusBar {
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="hostEdit">
+        <widget class="QLineEdit" name="serverHostEdit">
          <property name="minimumSize">
           <size>
            <width>180</width>
@@ -182,7 +182,7 @@ QStatusBar {
         </widget>
        </item>
        <item>
-        <widget class="QSpinBox" name="portSpin">
+        <widget class="QSpinBox" name="serverPortSpinBox">
          <property name="minimumSize">
           <size>
            <width>90</width>
@@ -226,21 +226,21 @@ QStatusBar {
         <number>10</number>
        </property>
        <item>
-        <widget class="QPushButton" name="testButton">
+        <widget class="QPushButton" name="testConnectionButton">
          <property name="text">
           <string>Test Connection</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="refreshButton">
+        <widget class="QPushButton" name="refreshDriveListButton">
          <property name="text">
           <string>Browse Files</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="watchButton">
+        <widget class="QPushButton" name="remoteScreenButton">
          <property name="text">
           <string>Remote Monitor</string>
          </property>
@@ -288,7 +288,7 @@ QStatusBar {
          <number>8</number>
         </property>
         <item>
-         <widget class="QTreeWidget" name="treeWidget">
+         <widget class="QTreeWidget" name="directoryTree">
           <property name="alternatingRowColors">
            <bool>true</bool>
           </property>
@@ -337,14 +337,14 @@ QStatusBar {
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="downloadFileButton">
+           <widget class="QPushButton" name="downloadRemoteFileButton">
             <property name="text">
              <string>Download</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="deleteFileButton">
+           <widget class="QPushButton" name="deleteRemotePathButton">
             <property name="text">
              <string>Delete</string>
             </property>
@@ -406,7 +406,7 @@ QStatusBar {
     </item>
    </layout>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QStatusBar" name="statusBar"/>
  </widget>
  <resources/>
  <connections/>

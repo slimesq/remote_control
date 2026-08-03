@@ -51,7 +51,7 @@ if ($Target -eq "server") {
 }
 
 if ($Target -eq "smoke") {
-    $executable = Resolve-RemoteExecutable -Workspace $workspace -FileName "RemoteControlSmokeTest.exe" -BuildDir $BuildDir
+    $executable = Resolve-RemoteExecutable -Workspace $workspace -FileName "RemoteControlSmokeTests.exe" -BuildDir $BuildDir
     Enable-QtRuntimeForExecutable -ExecutablePath $executable
     & $executable $ServerHost $Port
     exit $LASTEXITCODE

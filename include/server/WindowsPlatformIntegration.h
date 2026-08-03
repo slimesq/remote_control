@@ -2,14 +2,13 @@
 
 #include "common/Protocol.h"
 
+#include <QByteArray>
 #include <QPoint>
 #include <QString>
 #include <QStringList>
 
-class QImage;
-
 /** @brief Isolates Windows-specific process, input, shell, and startup operations. */
-class PlatformIntegration
+class WindowsPlatformIntegration
 {
 public:
     /**
@@ -26,14 +25,29 @@ public:
     /**
      * @brief Applies or restores the Windows lock-overlay state.
      * @param _locked Whether the system UI should be locked.
+     * @return true when the cursor confinement state is updated; otherwise false.
      */
-    static void setSystemUiLocked(bool _locked);
+    [[nodiscard]] static bool setSystemUiLocked(bool _locked);
 
     /**
-     * @brief Captures the primary Windows screen without GUI-thread resources.
-     * @return Captured screen image, or a null image when capture fails.
+     * @brief Captures and PNG-encodes the primary screen without an intermediate image copy.
+     * @return Encoded PNG bytes, or an empty array when capture or encoding fails.
      */
-    [[nodiscard]] static QImage capturePrimaryScreen();
+    [[nodiscard]] static QByteArray capturePrimaryScreenPng();
+
+    /**
+     * @brief Checks whether a path belongs to a directly attached Windows drive.
+     * @param _path Absolute file-system path to validate.
+     * @return true for supported local drive paths; otherwise false.
+     */
+    [[nodiscard]] static bool isLocalFilePath(QString const& _path);
+
+    /**
+     * @brief Opens a local file through the Windows shell association.
+     * @param _path Local file-system path to open.
+     * @return true when Windows accepts the open request; otherwise false.
+     */
+    [[nodiscard]] static bool openLocalFile(QString const& _path);
 
     /**
      * @brief Returns whether the process has administrator privileges.
@@ -49,6 +63,17 @@ public:
      */
     [[nodiscard]] static bool relaunchElevated(QStringList const& _arguments,
                                                QString* _errorMessage = nullptr);
+
+    /**
+     * @brief Waits for an earlier server process to release its resources.
+     * @param _processId Windows process identifier to wait for.
+     * @param _timeoutMs Maximum wait duration in milliseconds.
+     * @param _errorMessage Optional output for a user-facing failure message.
+     * @return true when the process has exited or no longer exists; otherwise false.
+     */
+    [[nodiscard]] static bool waitForProcessExit(quint32 _processId,
+                                                 int _timeoutMs,
+                                                 QString* _errorMessage = nullptr);
 
     /**
      * @brief Adds the server to the current user's startup entries.

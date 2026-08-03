@@ -5,7 +5,7 @@
 class QAction;
 class QMenu;
 class QSystemTrayIcon;
-class RemoteServer;
+class RemoteControlServer;
 
 /** @brief Exposes server state and local maintenance actions through a tray icon. */
 class ServerTrayController : public QObject
@@ -18,7 +18,7 @@ public:
      * @param _server Running server controlled by the tray actions.
      * @param _parent Parent object, or nullptr.
      */
-    explicit ServerTrayController(RemoteServer* _server, QObject* _parent = nullptr);
+    explicit ServerTrayController(RemoteControlServer* _server, QObject* _parent = nullptr);
 
     /** @brief Shows the tray icon and listening-port notification. */
     void show();
@@ -41,13 +41,14 @@ private:
      */
     void showError(QString const& _title, QString const& _message);
 
-    RemoteServer* m_server{nullptr};       ///< Non-owning server controlled by the tray interface.
+    RemoteControlServer* m_server{
+        nullptr};                          ///< Non-owning server controlled by the tray interface.
     QSystemTrayIcon* m_trayIcon{nullptr};  ///< Parent-owned system tray icon.
-    QMenu* m_menu{nullptr};                ///< Context menu released with this controller.
+    QMenu* m_trayMenu{nullptr};            ///< Context menu released with this controller.
     QAction* m_statusAction{nullptr};      ///< Read-only server status action.
-    QAction* m_adminAction{nullptr};       ///< Restarts the server with elevation.
-    QAction* m_startupInstallAction{nullptr};  ///< Enables startup for the current user.
-    QAction* m_startupRemoveAction{nullptr};   ///< Disables startup for the current user.
+    QAction* m_elevateAction{nullptr};     ///< Restarts the server with elevation.
+    QAction* m_installStartupAction{nullptr};  ///< Enables startup for the current user.
+    QAction* m_removeStartupAction{nullptr};   ///< Disables startup for the current user.
     QAction* m_lockAction{nullptr};            ///< Locks the local machine simulation.
     QAction* m_unlockAction{nullptr};          ///< Unlocks the local machine simulation.
     QAction* m_lockTestAction{nullptr};        ///< Starts a timed lock test.

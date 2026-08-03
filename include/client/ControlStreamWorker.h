@@ -14,16 +14,16 @@ class QTcpSocket;
 class QTimer;
 
 /** @brief Maintains the ordered persistent connection used for remote input control. */
-class ControlConnectionWorker final : public QObject
+class ControlStreamWorker final : public QObject
 {
     Q_OBJECT
 
 public:
     /** @brief Creates a disconnected control worker. */
-    explicit ControlConnectionWorker();
+    explicit ControlStreamWorker();
 
     /** @brief Releases the worker-owned control socket. */
-    ~ControlConnectionWorker() override;
+    ~ControlStreamWorker() override;
 
 public slots:
     /**
@@ -85,7 +85,7 @@ signals:
 
 private:
     /** @brief Lifecycle states of the persistent control connection. */
-    enum class ConnectionState
+    enum class ControlStreamState
     {
         Disconnected,  ///< No control connection is active.
         Connecting,    ///< The TCP connection is being established.
@@ -94,7 +94,7 @@ private:
         ShuttingDown,  ///< The worker is releasing resources before thread exit.
     };
 
-    struct PendingCommand
+    struct ControlCommand
     {
         remote_control::Command command{
             remote_control::Command::MouseEvent};  ///< Protocol operation to send.
@@ -110,7 +110,7 @@ private:
     void sendHandshake();
 
     /** @brief Sends the next queued command when no response is outstanding. */
-    void sendNext();
+    void sendNextCommand();
 
     /**
      * @brief Adds one command while coalescing adjacent mouse moves.
@@ -118,7 +118,7 @@ private:
      * @param _port Remote server TCP port.
      * @param _command Command and payload to enqueue.
      */
-    void enqueue(QString const& _host, quint16 _port, PendingCommand _command);
+    void enqueueCommand(QString const& _host, quint16 _port, ControlCommand _command);
 
     /** @brief Handles completion of the TCP connection. */
     void onConnected();
@@ -142,7 +142,7 @@ private:
      * @brief Fails all outstanding commands and resets the connection.
      * @param _message User-facing failure message.
      */
-    void failAll(QString const& _message);
+    void failAllCommands(QString const& _message);
 
     /** @brief Destroys the control socket and clears protocol state. */
     void resetSocket();
@@ -152,14 +152,15 @@ private:
      * @param _command Command to inspect.
      * @return true for a move-only mouse event; otherwise false.
      */
-    [[nodiscard]] static bool isMoveOnly(PendingCommand const& _command);
+    [[nodiscard]] static bool isMouseMoveOnly(ControlCommand const& _command);
 
     QTcpSocket* m_socket{nullptr};    ///< Persistent socket owned by the worker thread.
     QTimer* m_timeoutTimer{nullptr};  ///< Deadline timer for connection and command responses.
     QString m_host;                   ///< Host name or address of the active endpoint.
     quint16 m_port{0};                ///< TCP port of the active endpoint.
     QByteArray m_buffer;              ///< Bytes waiting to form complete response packets.
-    QQueue<PendingCommand> m_queue;   ///< Commands waiting to be sent in order.
-    std::optional<PendingCommand> m_activeCommand;  ///< Sent command awaiting its response.
-    ConnectionState m_state{ConnectionState::Disconnected};  ///< Current connection lifecycle.
+    QQueue<ControlCommand> m_pendingCommands;         ///< Commands waiting to be sent in order.
+    std::optional<ControlCommand> m_inFlightCommand;  ///< Sent command awaiting its response.
+    ControlStreamState m_state{
+        ControlStreamState::Disconnected};  ///< Current connection lifecycle.
 };

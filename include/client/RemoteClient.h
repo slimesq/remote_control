@@ -7,10 +7,10 @@
 #include <QString>
 
 class QThread;
-class ControlConnectionWorker;
-class DownloadWorker;
-class PendingRequest;
-class WatchConnectionWorker;
+class ControlStreamWorker;
+class FileDownloadWorker;
+class OneShotRequest;
+class ScreenStreamWorker;
 
 /** @brief Sends asynchronous remote-control commands and reports their results through signals. */
 class RemoteClient : public QObject
@@ -38,38 +38,38 @@ public:
     void testConnection();
 
     /** @brief Requests the remote drive list. */
-    void requestDrives();
+    void requestDriveList();
 
     /**
      * @brief Requests the entries in a remote directory.
      * @param _path Remote directory path.
      */
-    void requestDirectory(QString const& _path);
+    void requestDirectoryListing(QString const& _path);
 
     /**
      * @brief Requests that the server open a remote file.
      * @param _path Remote file path.
      */
-    void runFile(QString const& _path);
+    void openRemoteFile(QString const& _path);
 
     /**
      * @brief Requests deletion of a remote file or directory.
      * @param _path Remote file or directory path.
      */
-    void deleteFile(QString const& _path);
+    void deleteRemotePath(QString const& _path);
 
     /**
      * @brief Downloads a remote file to a local path.
      * @param _remotePath Source path on the remote host.
      * @param _localPath Destination path on the local host.
      */
-    void downloadFile(QString const& _remotePath, QString const& _localPath);
+    void downloadRemoteFile(QString const& _remotePath, QString const& _localPath);
 
     /** @brief Requests one remote screen frame. */
-    void requestWatchFrame();
+    void requestScreenFrame();
 
     /** @brief Closes the persistent remote-screen connection. */
-    void stopWatchStream();
+    void stopScreenStream();
 
     /** @brief Closes the persistent remote-input control connection. */
     void stopControlStream();
@@ -90,13 +90,13 @@ public:
      * @brief Returns whether a screen-frame request is currently pending.
      * @return true when a frame request is pending; otherwise false.
      */
-    [[nodiscard]] bool hasPendingWatchFrame() const noexcept;
+    [[nodiscard]] bool hasPendingScreenFrame() const noexcept;
 
     /**
      * @brief Updates the pending screen-frame request state.
      * @param _pending Whether a frame request is pending.
      */
-    void setWatchFramePending(bool _pending);
+    void setScreenFramePending(bool _pending);
 
 signals:
     /**
@@ -133,10 +133,10 @@ signals:
      * @param _success Whether the command succeeded.
      * @param _message User-facing result message.
      */
-    void fileCommandFinished(remote_control::Command _command,
-                             QString const& _path,
-                             bool _success,
-                             QString const& _message);
+    void remotePathCommandFinished(remote_control::Command _command,
+                                   QString const& _path,
+                                   bool _success,
+                                   QString const& _message);
 
     /**
      * @brief Reports the final result of Command::MouseEvent, Command::LockMachine, or
@@ -175,19 +175,19 @@ signals:
      * @brief Delivers a decoded frame returned by Command::WatchScreen.
      * @param _image Decoded remote screen image.
      */
-    void watchFrameReady(QImage const& _image);
+    void screenFrameReady(QImage const& _image);
 
     /** @brief Reports that the current screen-frame request has finished. */
-    void watchRequestFinished();
+    void screenFrameRequestFinished();
 
     /**
      * @brief Reports a connection or frame-request failure for Command::WatchScreen.
      * @param _message User-facing failure message.
      */
-    void watchFailed(QString const& _message);
+    void screenStreamFailed(QString const& _message);
 
 private:
-    friend class PendingRequest;
+    friend class OneShotRequest;
 
     /**
      * @brief Checks whether an asynchronous result belongs to the active endpoint.
@@ -198,14 +198,14 @@ private:
 
     QString m_host{QStringLiteral("127.0.0.1")};        ///< Configured server host name or address.
     quint16 m_port{remote_control::DefaultServerPort};  ///< Configured server TCP port.
-    QThread* m_watchThread{nullptr};                    ///< Thread for remote-screen network I/O.
-    WatchConnectionWorker* m_watchWorker{nullptr};      ///< Persistent screen-stream worker.
-    QThread* m_controlThread{nullptr};                  ///< Thread for remote-control network I/O.
-    ControlConnectionWorker* m_controlWorker{nullptr};  ///< Persistent input-control worker.
-    QThread* m_downloadThread{nullptr};                 ///< Thread for file-download network I/O.
-    DownloadWorker* m_downloadWorker{nullptr};          ///< Worker that performs one download.
-    bool m_watchPending{false};       ///< Whether one frame request is awaiting completion.
-    quint64 m_endpointGeneration{0};  ///< Discards results from obsolete endpoints.
-    quint64 m_watchGeneration{0};     ///< Discards results from stopped monitor sessions.
-    quint64 m_controlGeneration{0};   ///< Discards results from stopped control sessions.
+    QThread* m_screenStreamThread{nullptr};             ///< Thread for remote-screen network I/O.
+    ScreenStreamWorker* m_screenStreamWorker{nullptr};  ///< Persistent screen-stream worker.
+    QThread* m_controlStreamThread{nullptr};            ///< Thread for remote-control network I/O.
+    ControlStreamWorker* m_controlStreamWorker{nullptr};  ///< Persistent input-control worker.
+    QThread* m_fileDownloadThread{nullptr};               ///< Thread for file-download network I/O.
+    FileDownloadWorker* m_fileDownloadWorker{nullptr};    ///< Worker that performs one download.
+    bool m_screenFramePending{false};      ///< Whether one frame request is awaiting completion.
+    quint64 m_endpointGeneration{0};       ///< Discards results from obsolete endpoints.
+    quint64 m_screenStreamGeneration{0};   ///< Discards results from stopped screen streams.
+    quint64 m_controlStreamGeneration{0};  ///< Discards results from stopped control sessions.
 };

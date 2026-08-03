@@ -21,7 +21,7 @@
             "name": "Debug Smoke Test",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\build\\msvc-debug\\bin\\RemoteControlSmokeTest.exe",
+            "program": "${workspaceFolder}\\build\\msvc-debug\\bin\\RemoteControlSmokeTests.exe",
             "args": ["127.0.0.1", "9527"],
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "CMake: Build Debug Tests"

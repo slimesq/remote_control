@@ -1,7 +1,7 @@
-#include "client/WatchWindow.h"
+#include "client/RemoteScreenWindow.h"
 
 #include "client/RemoteClient.h"
-#include "ui_WatchWindow.h"
+#include "ui_RemoteScreenWindow.h"
 
 #include <QCloseEvent>
 #include <QMouseEvent>
@@ -47,7 +47,7 @@ RemoteScreenWidget::RemoteScreenWidget(QWidget* _parent)
 
 void RemoteScreenWidget::setImage(QImage const& _image)
 {
-    this->m_image = _image;
+    this->m_screenImage = _image;
     update();
 }
 
@@ -56,9 +56,9 @@ void RemoteScreenWidget::paintEvent(QPaintEvent* _event)
     static_cast<void>(_event);
     QPainter painter{this};
     painter.fillRect(rect(), Qt::black);
-    if (!this->m_image.isNull())
+    if (!this->m_screenImage.isNull())
     {
-        painter.drawImage(rect(), this->m_image);
+        painter.drawImage(rect(), this->m_screenImage);
     }
 }
 
@@ -127,12 +127,12 @@ remote_control::MouseEventPacket RemoteScreenWidget::makeMouseEvent(
 QPoint RemoteScreenWidget::mapToRemote(QPoint const& _point) const
 {
     // Coordinate scaling requires both a decoded source frame and non-zero widget dimensions.
-    if (this->m_image.isNull() || width() <= 0 || height() <= 0)
+    if (this->m_screenImage.isNull() || width() <= 0 || height() <= 0)
     {
         return {};
     }
-    int const remoteX{_point.x() * this->m_image.width() / width()};
-    int const remoteY{_point.y() * this->m_image.height() / height()};
+    int const remoteX{_point.x() * this->m_screenImage.width() / width()};
+    int const remoteY{_point.y() * this->m_screenImage.height() / height()};
     return {remoteX, remoteY};
 }
 
@@ -151,10 +151,10 @@ remote_control::MouseButton RemoteScreenWidget::toProtocolButton(Qt::MouseButton
     }
 }
 
-WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
+RemoteScreenWindow::RemoteScreenWindow(RemoteClient* _client, QWidget* _parent)
     : QDialog{_parent},
       m_client{_client},
-      m_ui{std::make_unique<Ui::WatchWindow>()},
+      m_ui{std::make_unique<Ui::RemoteScreenWindow>()},
       m_frameRequestTimer{new QTimer{this}}
 {
     this->m_ui->setupUi(this);
@@ -167,7 +167,8 @@ WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
     // A single-shot timer schedules only after the current frame request has completed.
     this->m_frameRequestTimer->setSingleShot(true);
 
-    connect(this->m_frameRequestTimer, &QTimer::timeout, this, &WatchWindow::requestNextFrame);
+    connect(
+        this->m_frameRequestTimer, &QTimer::timeout, this, &RemoteScreenWindow::requestNextFrame);
     connect(this->m_screenWidget,
             &RemoteScreenWidget::mouseEventCreated,
             this->m_client,
@@ -179,16 +180,18 @@ WatchWindow::WatchWindow(RemoteClient* _client, QWidget* _parent)
             this->m_client,
             &RemoteClient::unlockRemote);
     connect(this->m_client,
-            &RemoteClient::watchFrameReady,
+            &RemoteClient::screenFrameReady,
             this->m_screenWidget,
             &RemoteScreenWidget::setImage);
-    connect(
-        this->m_client, &RemoteClient::watchRequestFinished, this, &WatchWindow::scheduleNextFrame);
+    connect(this->m_client,
+            &RemoteClient::screenFrameRequestFinished,
+            this,
+            &RemoteScreenWindow::scheduleNextFrame);
 }
 
-WatchWindow::~WatchWindow() = default;
+RemoteScreenWindow::~RemoteScreenWindow() = default;
 
-void WatchWindow::showEvent(QShowEvent* _event)
+void RemoteScreenWindow::showEvent(QShowEvent* _event)
 {
     QDialog::showEvent(_event);
     this->m_frameRequestTimer->stop();
@@ -197,16 +200,16 @@ void WatchWindow::showEvent(QShowEvent* _event)
     this->requestNextFrame();
 }
 
-void WatchWindow::closeEvent(QCloseEvent* _event)
+void RemoteScreenWindow::closeEvent(QCloseEvent* _event)
 {
     this->m_frameRequestTimer->stop();
     this->m_frameRequestElapsed.invalidate();
-    this->m_client->stopWatchStream();
+    this->m_client->stopScreenStream();
     this->m_client->stopControlStream();
     QDialog::closeEvent(_event);
 }
 
-void WatchWindow::requestNextFrame()
+void RemoteScreenWindow::requestNextFrame()
 {
     if (!this->isVisible())
     {
@@ -215,10 +218,10 @@ void WatchWindow::requestNextFrame()
 
     // Measure from request submission so processing time counts toward the frame interval.
     this->m_frameRequestElapsed.start();
-    this->m_client->requestWatchFrame();
+    this->m_client->requestScreenFrame();
 }
 
-void WatchWindow::scheduleNextFrame()
+void RemoteScreenWindow::scheduleNextFrame()
 {
     if (!this->isVisible())
     {

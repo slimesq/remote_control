@@ -9,7 +9,7 @@ class QProgressDialog;
 class QTableWidgetItem;
 class QTreeWidgetItem;
 class RemoteClient;
-class WatchWindow;
+class RemoteScreenWindow;
 
 namespace Ui
 {
@@ -73,8 +73,8 @@ private:
     /** @brief Clears the displayed remote drives and files. */
     void clearRemoteView();
 
-    /** @brief Opens and activates the remote watch window. */
-    void showWatchWindow();
+    /** @brief Opens and activates the remote screen window. */
+    void showRemoteScreenWindow();
 
     /**
      * @brief Returns the selected remote file path.
@@ -151,13 +151,14 @@ private:
      */
     [[nodiscard]] static QString joinPath(QString const& _basePath, QString const& _fileName);
 
-    RemoteClient* m_client{nullptr};       ///< Client facade shared by all window operations.
-    WatchWindow* m_watchWindow{nullptr};   ///< Lazily created remote-screen dialog.
-    std::unique_ptr<Ui::MainWindow> m_ui;  ///< Generated main-window user interface.
-    QProgressDialog* m_downloadProgress{nullptr};  ///< Progress dialog for the active download.
-    QString m_activeDownloadPath;                  ///< Remote path of the active download.
-    bool m_connectionVerified{false};              ///< Whether the current endpoint was tested.
-    bool m_connectionTestPending{false};           ///< Whether a connection test is outstanding.
-    bool m_driveListPending{false};                ///< Whether a drive-list request is outstanding.
-    bool m_fileCommandPending{false};              ///< Whether a file command is outstanding.
+    RemoteClient* m_client{nullptr};  ///< Client facade shared by all window operations.
+    RemoteScreenWindow* m_remoteScreenWindow{nullptr};  ///< Lazily created remote-screen dialog.
+    std::unique_ptr<Ui::MainWindow> m_ui;               ///< Generated main-window user interface.
+    QProgressDialog* m_downloadProgressDialog{
+        nullptr};                            ///< Progress dialog for the active download.
+    QString m_activeDownloadPath;            ///< Remote path of the active download.
+    bool m_connectionVerified{false};        ///< Whether the current endpoint was tested.
+    bool m_connectionTestPending{false};     ///< Whether a connection test is outstanding.
+    bool m_driveListPending{false};          ///< Whether a drive-list request is outstanding.
+    bool m_remotePathCommandPending{false};  ///< Whether a file command is outstanding.
 };
