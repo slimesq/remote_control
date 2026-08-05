@@ -1,6 +1,4 @@
-#include "server/RemoteControlTransportInternal.h"
-
-#include "server/WindowsPlatformIntegration.h"
+#include "internal/RemoteControlTransportImpl.h"
 
 #include <QDataStream>
 #include <QDir>
@@ -108,7 +106,7 @@ void RemoteControlTransport::Impl::streamDirectory(
     QString const path{remote_control::decodeUtf8(_payload)};
     QFileInfo const directoryInfo{path};
     QDir const directory{path};
-    if (!WindowsPlatformIntegration::isLocalFilePath(path) || !directoryInfo.exists() ||
+    if (!this->m_hostServices.isFilePathAllowed(path) || !directoryInfo.exists() ||
         !directoryInfo.isDir() || !directory.isReadable())
     {
         remote_control::FileEntry invalidEntry;
@@ -190,7 +188,7 @@ void RemoteControlTransport::Impl::streamDownload(
     std::shared_ptr<ConnectionContext> const& _connection, QByteArray const& _payload)
 {
     QString const path{remote_control::decodeUtf8(_payload)};
-    if (!WindowsPlatformIntegration::isLocalFilePath(path))
+    if (!this->m_hostServices.isFilePathAllowed(path))
     {
         this->sendFinalPacket(_connection,
                               {remote_control::Command::DownloadFile, makeFileSizePayload(-1)});
@@ -327,7 +325,7 @@ void RemoteControlTransport::Impl::deleteTarget(
     QFileInfo const info{path};
     bool success{false};
     QString message;
-    if (!WindowsPlatformIntegration::isLocalFilePath(path))
+    if (!this->m_hostServices.isFilePathAllowed(path))
     {
         message = QObject::tr("Only local drive paths are supported: %1").arg(path);
     }

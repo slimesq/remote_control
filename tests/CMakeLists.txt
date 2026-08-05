@@ -1,5 +1,5 @@
 add_executable(RemoteControlSmokeTests
-    SmokeTestMain.cpp
+    SmokeTests.cpp
 )
 
 target_link_libraries(RemoteControlSmokeTests PRIVATE
@@ -10,7 +10,30 @@ target_link_libraries(RemoteControlSmokeTests PRIVATE
 )
 
 add_executable(RemoteControlProtocolTests
-    ProtocolTestMain.cpp
+    ProtocolTests.cpp
+)
+
+add_executable(RemoteControlClientWorkerLifecycleTests
+    ClientWorkerLifecycleTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/client/ControlStreamWorker.cpp
+    ${PROJECT_SOURCE_DIR}/src/client/FileDownloadWorker.cpp
+    ${PROJECT_SOURCE_DIR}/src/client/RemoteClient.cpp
+    ${PROJECT_SOURCE_DIR}/src/client/ScreenStreamWorker.cpp
+    ${PROJECT_SOURCE_DIR}/include/client/ControlStreamWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/FileDownloadWorker.h
+    ${PROJECT_SOURCE_DIR}/include/client/RemoteClient.h
+    ${PROJECT_SOURCE_DIR}/include/client/ScreenStreamWorker.h
+)
+
+target_include_directories(RemoteControlClientWorkerLifecycleTests PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(RemoteControlClientWorkerLifecycleTests PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Network
+    RemoteControlCommon
 )
 
 target_link_libraries(RemoteControlProtocolTests PRIVATE
@@ -19,43 +42,49 @@ target_link_libraries(RemoteControlProtocolTests PRIVATE
 )
 
 add_executable(RemoteControlTransportLifecycleTests
-    TransportLifecycleTestMain.cpp
+    FakeRemoteControlHostServices.cpp
+    FakeRemoteControlHostServices.h
+    TransportLifecycleTests.cpp
 )
 
 target_link_libraries(RemoteControlTransportLifecycleTests PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Network
-    RemoteControlServerCore
+    RemoteControl::ServerTransport
 )
 
 add_executable(RemoteControlConnectionStateTests
-    ConnectionStateMachineTestMain.cpp
+    ConnectionStateMachineTests.cpp
 )
 
 target_include_directories(RemoteControlConnectionStateTests PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/server_transport
 )
 
 target_link_libraries(RemoteControlConnectionStateTests PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
-    RemoteControlServerCore
+    RemoteControl::ServerTransport
 )
 
 add_executable(RemoteControlTransportResilienceTests
-    TransportResilienceTestMain.cpp
+    FakeRemoteControlHostServices.cpp
+    FakeRemoteControlHostServices.h
+    TransportResilienceTests.cpp
 )
 
 target_link_libraries(RemoteControlTransportResilienceTests PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Network
     RemoteControlCommon
-    RemoteControlServerCore
+    RemoteControl::ServerTransport
 )
 
 add_test(NAME RemoteControlProtocolTests COMMAND RemoteControlProtocolTests)
+add_test(NAME RemoteControlClientWorkerLifecycleTests COMMAND RemoteControlClientWorkerLifecycleTests)
 add_test(NAME RemoteControlTransportLifecycleTests COMMAND RemoteControlTransportLifecycleTests)
 add_test(NAME RemoteControlConnectionStateTests COMMAND RemoteControlConnectionStateTests)
 add_test(NAME RemoteControlTransportResilienceTests COMMAND RemoteControlTransportResilienceTests)
 
 set_tests_properties(RemoteControlTransportLifecycleTests PROPERTIES TIMEOUT 30)
+set_tests_properties(RemoteControlClientWorkerLifecycleTests PROPERTIES TIMEOUT 30)
 set_tests_properties(RemoteControlTransportResilienceTests PROPERTIES TIMEOUT 30)

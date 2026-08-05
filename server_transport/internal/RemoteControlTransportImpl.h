@@ -1,6 +1,7 @@
 #pragma once
 
-#include "server/RemoteControlTransport.h"
+#include "RemoteControlHostServices.h"
+#include "RemoteControlTransport.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -373,9 +374,9 @@ class RemoteControlTransport::Impl final
 public:
     /**
      * @brief Creates a stopped IOCP implementation.
-     * @param _screenLockService GUI-thread service used for lock operations.
+     * @param _hostServices Thread-safe host operations that outlive this implementation.
      */
-    explicit Impl(ScreenLockService* _screenLockService);
+    Impl(RemoteControlHostServices& _hostServices, RemoteControlTransportOptions const& _options);
 
     /** @brief Stops the implementation before destroying synchronization state. */
     ~Impl();
@@ -652,21 +653,22 @@ private:
     /** @brief Releases one pending-operation count and wakes shutdown if drained. */
     void finishOperation() noexcept;
 
-    ScreenLockService* m_screenLockService{nullptr};  ///< GUI-thread service for lock operations.
-    WinsockRuntime m_winsockRuntime;                  ///< Process Winsock lifetime owner.
-    TaskPool m_shellCommandTaskPool;                  ///< Bounded shell-command task pool.
-    TaskPool m_fileTaskPool;                          ///< Bounded blocking file-operation pool.
-    TaskPool m_screenCaptureTaskPool;                 ///< Screen capture and PNG encoding pool.
-    ConnectionRegistry m_connectionRegistry;          ///< Active contexts and role quotas.
-    std::atomic_bool m_stopping{false};               ///< Whether server shutdown has begun.
-    SOCKET m_listenSocket{INVALID_SOCKET};            ///< Overlapped listening socket.
-    HANDLE m_completionPort{nullptr};                 ///< Windows I/O completion port.
-    LPFN_ACCEPTEX m_acceptExFunction{nullptr};        ///< Dynamically loaded AcceptEx function.
-    std::atomic<quint16> m_listeningPort{0};          ///< Active bound TCP port.
-    std::vector<std::thread> m_completionThreads;     ///< GetQueuedCompletionStatus workers.
-    std::thread m_idleTimeoutThread;                  ///< Connection idle-timeout monitor.
-    std::mutex m_acceptMutex;                         ///< Serializes AcceptEx slot replenishment.
-    std::mutex m_idleTimeoutMutex;                    ///< Protects interruptible timeout waiting.
+    RemoteControlHostServices& m_hostServices;       ///< Host operations used by commands.
+    RemoteControlTransportOptions m_options;         ///< Validated transport configuration.
+    WinsockRuntime m_winsockRuntime;                 ///< Process Winsock lifetime owner.
+    TaskPool m_shellCommandTaskPool;                 ///< Bounded shell-command task pool.
+    TaskPool m_fileTaskPool;                         ///< Bounded blocking file-operation pool.
+    TaskPool m_screenCaptureTaskPool;                ///< Screen capture and PNG encoding pool.
+    ConnectionRegistry m_connectionRegistry;         ///< Active contexts and role quotas.
+    std::atomic_bool m_stopping{false};              ///< Whether server shutdown has begun.
+    SOCKET m_listenSocket{INVALID_SOCKET};           ///< Overlapped listening socket.
+    HANDLE m_completionPort{nullptr};                ///< Windows I/O completion port.
+    LPFN_ACCEPTEX m_acceptExFunction{nullptr};       ///< Dynamically loaded AcceptEx function.
+    std::atomic<quint16> m_listeningPort{0};         ///< Active bound TCP port.
+    std::vector<std::thread> m_completionThreads;    ///< GetQueuedCompletionStatus workers.
+    std::thread m_idleTimeoutThread;                 ///< Connection idle-timeout monitor.
+    std::mutex m_acceptMutex;                        ///< Serializes AcceptEx slot replenishment.
+    std::mutex m_idleTimeoutMutex;                   ///< Protects interruptible timeout waiting.
     std::condition_variable m_idleTimeoutCondition;  ///< Wakes the timeout monitor during shutdown.
     std::atomic_int m_pendingAcceptOperationCount{0};  ///< AcceptEx operations awaiting completion.
     std::mutex m_screenFrameCacheMutex;            ///< Serializes shared capture and PNG encoding.

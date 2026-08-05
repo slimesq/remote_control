@@ -196,6 +196,15 @@ private:
      */
     [[nodiscard]] bool isEndpointGenerationCurrent(quint64 _generation) const noexcept;
 
+    /**
+     * @brief Checks whether a download result belongs to the current endpoint and operation.
+     * @param _endpointGeneration Endpoint generation captured by the worker.
+     * @param _downloadGeneration Download generation captured by the worker.
+     * @return true when both generations are current; otherwise false.
+     */
+    [[nodiscard]] bool isDownloadGenerationCurrent(quint64 _endpointGeneration,
+                                                   quint64 _downloadGeneration) const noexcept;
+
     QString m_host{QStringLiteral("127.0.0.1")};        ///< Configured server host name or address.
     quint16 m_port{remote_control::DefaultServerPort};  ///< Configured server TCP port.
     QThread* m_screenStreamThread{nullptr};             ///< Thread for remote-screen network I/O.
@@ -206,6 +215,7 @@ private:
     FileDownloadWorker* m_fileDownloadWorker{nullptr};    ///< Worker that performs one download.
     bool m_screenFramePending{false};      ///< Whether one frame request is awaiting completion.
     quint64 m_endpointGeneration{0};       ///< Discards results from obsolete endpoints.
+    quint64 m_downloadGeneration{0};       ///< Identifies the latest download or cancellation.
     quint64 m_screenStreamGeneration{0};   ///< Discards results from stopped screen streams.
     quint64 m_controlStreamGeneration{0};  ///< Discards results from stopped control sessions.
 };

@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 $workspace = Split-Path -Parent $PSScriptRoot
 $outputPath = Join-Path $workspace "CMakeUserPresets.json"
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+$generatorFingerprint = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
 
 . (Join-Path $PSScriptRoot "internal\Common.ps1")
 
@@ -190,6 +191,11 @@ foreach ($name in @("VCINSTALLDIR", "VCToolsInstallDir", "VSINSTALLDIR", "Window
 
 $presetDocument = [ordered]@{
     version = 6
+    vendor = [ordered]@{
+        "remote-control" = [ordered]@{
+            generatorFingerprint = $generatorFingerprint
+        }
+    }
     include = @("CMakePresets.json")
     configurePresets = @(
         [ordered]@{
@@ -233,6 +239,7 @@ $presetDocument = [ordered]@{
             inherits = "local-msvc-debug"
             targets = @(
                 "RemoteControlProtocolTests"
+                "RemoteControlClientWorkerLifecycleTests"
                 "RemoteControlSmokeTests"
                 "RemoteControlTransportLifecycleTests"
                 "RemoteControlConnectionStateTests"
@@ -263,6 +270,7 @@ $presetDocument = [ordered]@{
             inherits = "local-msvc-release"
             targets = @(
                 "RemoteControlProtocolTests"
+                "RemoteControlClientWorkerLifecycleTests"
                 "RemoteControlSmokeTests"
                 "RemoteControlTransportLifecycleTests"
                 "RemoteControlConnectionStateTests"

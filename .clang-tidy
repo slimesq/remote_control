@@ -88,5 +88,5 @@ CheckOptions:
   modernize-use-nodiscard.ReplacementString: "[[nodiscard]]"
 
 WarningsAsErrors: ""
-HeaderFilterRegex: '.*remote_control[\\/](include|src)[\\/]'
+HeaderFilterRegex: '.*remote_control[\\/](include|server_transport|src|tests)[\\/]'
 FormatStyle: file

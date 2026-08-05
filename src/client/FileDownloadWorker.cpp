@@ -35,7 +35,9 @@ FileDownloadWorker::~FileDownloadWorker()
 void FileDownloadWorker::startDownload(QString const& _host,
                                        quint16 _port,
                                        QString const& _remotePath,
-                                       QString const& _localPath)
+                                       QString const& _localPath,
+                                       quint64 _endpointGeneration,
+                                       quint64 _downloadGeneration)
 {
     // Shutdown is terminal; a live worker also serializes downloads onto one socket and save file.
     if (this->m_state == DownloadState::ShuttingDown)
@@ -44,8 +46,12 @@ void FileDownloadWorker::startDownload(QString const& _host,
     }
     if (this->m_state == DownloadState::Downloading)
     {
-        emit this->finished(
-            _remotePath, _localPath, false, tr("Another download is already active."));
+        emit this->finished(_endpointGeneration,
+                            _downloadGeneration,
+                            _remotePath,
+                            _localPath,
+                            false,
+                            tr("Another download is already active."));
         return;
     }
 
@@ -53,6 +59,8 @@ void FileDownloadWorker::startDownload(QString const& _host,
     this->m_port = _port;
     this->m_remotePath = _remotePath;
     this->m_localPath = _localPath;
+    this->m_endpointGeneration = _endpointGeneration;
+    this->m_downloadGeneration = _downloadGeneration;
     this->m_expectedFileSize = -1;
     this->m_writtenBytes = 0;
     this->m_buffer.clear();
@@ -85,6 +93,19 @@ void FileDownloadWorker::startDownload(QString const& _host,
         this->m_socket, &QTcpSocket::errorOccurred, this, &FileDownloadWorker::onErrorOccurred);
     this->m_timeoutTimer->start();
     this->m_socket->connectToHost(this->m_host, this->m_port);
+}
+
+void FileDownloadWorker::cancelActiveDownload(quint64 _endpointGeneration,
+                                              quint64 _downloadGeneration)
+{
+    if (this->m_state == DownloadState::Downloading)
+    {
+        // Report intentional cancellation in the caller's current generation so the GUI can close
+        // progress state while all previously queued data remains stale.
+        this->m_endpointGeneration = _endpointGeneration;
+        this->m_downloadGeneration = _downloadGeneration;
+        this->fail(tr("Download cancelled because the remote endpoint changed."));
+    }
 }
 
 void FileDownloadWorker::shutdown()
@@ -194,7 +215,8 @@ void FileDownloadWorker::processPacket(QByteArray const& _payload)
         // Complete an empty file immediately because no data packets will follow.
         if (this->m_expectedFileSize == 0)
         {
-            emit this->progress(this->m_remotePath, 0, 0);
+            emit this->progress(
+                this->m_endpointGeneration, this->m_downloadGeneration, this->m_remotePath, 0, 0);
             this->completeSuccessfully();
         }
         return;
@@ -214,7 +236,11 @@ void FileDownloadWorker::processPacket(QByteArray const& _payload)
     }
 
     this->m_writtenBytes += _payload.size();
-    emit this->progress(this->m_remotePath, this->m_writtenBytes, this->m_expectedFileSize);
+    emit this->progress(this->m_endpointGeneration,
+                        this->m_downloadGeneration,
+                        this->m_remotePath,
+                        this->m_writtenBytes,
+                        this->m_expectedFileSize);
     // 4. Commit the temporary file after all declared bytes have been received.
     if (this->m_writtenBytes == this->m_expectedFileSize)
     {
@@ -234,11 +260,18 @@ void FileDownloadWorker::completeSuccessfully()
 
     QString const remotePath{this->m_remotePath};
     QString const localPath{this->m_localPath};
+    quint64 const endpointGeneration{this->m_endpointGeneration};
+    quint64 const downloadGeneration{this->m_downloadGeneration};
     this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
     this->m_outputFile.reset();
     this->resetSocket();
-    emit this->finished(remotePath, localPath, true, tr("Download completed."));
+    emit this->finished(endpointGeneration,
+                        downloadGeneration,
+                        remotePath,
+                        localPath,
+                        true,
+                        tr("Download completed."));
 }
 
 void FileDownloadWorker::fail(QString const& _message)
@@ -251,6 +284,8 @@ void FileDownloadWorker::fail(QString const& _message)
 
     QString const remotePath{this->m_remotePath};
     QString const localPath{this->m_localPath};
+    quint64 const endpointGeneration{this->m_endpointGeneration};
+    quint64 const downloadGeneration{this->m_downloadGeneration};
     this->m_state = DownloadState::Idle;
     this->m_timeoutTimer->stop();
     if (this->m_outputFile && this->m_outputFile->isOpen())
@@ -259,7 +294,8 @@ void FileDownloadWorker::fail(QString const& _message)
     }
     this->m_outputFile.reset();
     this->resetSocket();
-    emit this->finished(remotePath, localPath, false, _message);
+    emit this->finished(
+        endpointGeneration, downloadGeneration, remotePath, localPath, false, _message);
 }
 
 void FileDownloadWorker::resetSocket()

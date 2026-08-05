@@ -1,4 +1,5 @@
-#include "server/RemoteControlTransport.h"
+#include "FakeRemoteControlHostServices.h"
+#include "RemoteControlTransport.h"
 
 #include <QCoreApplication>
 #include <QTcpSocket>
@@ -49,9 +50,16 @@ void connectDuringShutdown(quint16 _port, std::atomic_bool* _started)
  */
 bool testConcurrentStop()
 {
+    RemoteControlTransportOptions options;
+    options.initialAcceptCount = 2;
+    options.minimumCompletionWorkerCount = 1;
+    options.maximumCompletionWorkerCount = 2;
+    options.shellCommandWorkerCount = 1;
+    options.fileWorkerCount = 1;
+    options.screenCaptureWorkerCount = 1;
     for (int iteration{0}; iteration < LifecycleIterationCount; ++iteration)
     {
-        RemoteControlTransport server{nullptr};
+        RemoteControlTransport server{fakeRemoteControlHostServices(), options};
         if (!server.start(0) || server.listeningPort() == 0)
         {
             std::cerr << "FAILED: lifecycle server did not start at iteration " << iteration

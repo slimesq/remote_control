@@ -1,14 +1,9 @@
-#include "server/RemoteControlTransportInternal.h"
+#include "internal/RemoteControlTransportImpl.h"
 
-#include "server/RemoteControlServerLog.h"
-#include "server/ScreenLockService.h"
-#include "server/WindowsPlatformIntegration.h"
+#include "internal/RemoteControlTransportLog.h"
 
-#include <QDir>
 #include <QFileInfo>
-#include <QMetaObject>
 #include <QObject>
-#include <QPoint>
 
 #include <cstring>
 #include <utility>
@@ -26,26 +21,10 @@ using iocp_detail::monotonicMilliseconds;
  * @brief Builds the local drive-list response used by the protocol.
  * @return Packet containing the available Windows drive roots.
  */
-remote_control::Packet makeDriveListPacket()
+remote_control::Packet makeDriveListPacket(RemoteControlHostServices const& _hostServices)
 {
-    QStringList drives;
-    for (QFileInfo const& drive : QDir::drives())
-    {
-        QString drivePath{QDir::toNativeSeparators(drive.absoluteFilePath())};
-        if (!WindowsPlatformIntegration::isLocalFilePath(drivePath))
-        {
-            continue;
-        }
-        while (drivePath.endsWith(QDir::separator()))
-        {
-            drivePath.chop(1);
-        }
-        if (!drivePath.isEmpty())
-        {
-            drives.append(drivePath);
-        }
-    }
-    return {remote_control::Command::ListDrives, remote_control::encodeUtf8(drives.join(','))};
+    return {remote_control::Command::ListDrives,
+            remote_control::encodeUtf8(_hostServices.localDriveRoots().join(','))};
 }
 
 }  // namespace
@@ -119,10 +98,10 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
             this->closeConnection(_connection, ConnectionCloseReason::CapacityLimit);
             return false;
         }
-        writeServerLog(ServerLogLevel::Debug,
-                       QStringLiteral("connection.classified"),
-                       {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                        {QStringLiteral("phase"), QStringLiteral("screen_stream")}});
+        writeTransportLog(TransportLogLevel::Debug,
+                          QStringLiteral("connection.classified"),
+                          {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                           {QStringLiteral("phase"), QStringLiteral("screen_stream")}});
         bool const scheduled{this->scheduleScreenFrame(_connection)};
         if (!scheduled)
         {
@@ -143,10 +122,10 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
             this->closeConnection(_connection, ConnectionCloseReason::CapacityLimit);
             return false;
         }
-        writeServerLog(ServerLogLevel::Debug,
-                       QStringLiteral("connection.classified"),
-                       {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                        {QStringLiteral("phase"), QStringLiteral("control_stream")}});
+        writeTransportLog(TransportLogLevel::Debug,
+                          QStringLiteral("connection.classified"),
+                          {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                           {QStringLiteral("phase"), QStringLiteral("control_stream")}});
         bool const queued{this->enqueuePacket(
             _connection, makeStatusPacket(remote_control::Command::ControlChannel, true, {}))};
         if (!queued)
@@ -165,10 +144,10 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
             this->closeConnection(_connection, ConnectionCloseReason::ProtocolViolation);
             return false;
         }
-        writeServerLog(ServerLogLevel::Debug,
-                       QStringLiteral("connection.classified"),
-                       {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                        {QStringLiteral("phase"), QStringLiteral("file_transfer")}});
+        writeTransportLog(TransportLogLevel::Debug,
+                          QStringLiteral("connection.classified"),
+                          {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                           {QStringLiteral("phase"), QStringLiteral("file_transfer")}});
         if (!this->scheduleFileRequest(_connection, _packet))
         {
             this->closeConnection(_connection, ConnectionCloseReason::TaskRejected);
@@ -183,10 +162,10 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
             this->closeConnection(_connection, ConnectionCloseReason::ProtocolViolation);
             return false;
         }
-        writeServerLog(ServerLogLevel::Debug,
-                       QStringLiteral("connection.classified"),
-                       {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                        {QStringLiteral("phase"), QStringLiteral("one_shot")}});
+        writeTransportLog(TransportLogLevel::Debug,
+                          QStringLiteral("connection.classified"),
+                          {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                           {QStringLiteral("phase"), QStringLiteral("one_shot")}});
         if (!this->scheduleOpenFile(_connection, _packet.payload))
         {
             this->closeConnection(_connection, ConnectionCloseReason::TaskRejected);
@@ -199,10 +178,10 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
         this->closeConnection(_connection, ConnectionCloseReason::ProtocolViolation);
         return false;
     }
-    writeServerLog(ServerLogLevel::Debug,
-                   QStringLiteral("connection.classified"),
-                   {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                    {QStringLiteral("phase"), QStringLiteral("one_shot")}});
+    writeTransportLog(TransportLogLevel::Debug,
+                      QStringLiteral("connection.classified"),
+                      {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                       {QStringLiteral("phase"), QStringLiteral("one_shot")}});
     remote_control::Packet response;
     bool supported{true};
     switch (_packet.command)
@@ -211,7 +190,7 @@ bool RemoteControlTransport::Impl::handleInitialPacket(
             response = remote_control::Packet{remote_control::Command::TestConnection};
             break;
         case remote_control::Command::ListDrives:
-            response = makeDriveListPacket();
+            response = makeDriveListPacket(this->m_hostServices);
             break;
         default:
             supported = false;
@@ -251,10 +230,7 @@ bool RemoteControlTransport::Impl::handleControlPacket(
         {
             remote_control::MouseEventPacket event{};
             std::memcpy(&event, _packet.payload.constData(), sizeof(event));
-            bool const success{WindowsPlatformIntegration::sendGlobalMouseEvent(
-                QPoint{event.x, event.y},
-                static_cast<remote_control::MouseAction>(event.action),
-                static_cast<remote_control::MouseButton>(event.button))};
+            bool const success{this->m_hostServices.sendMouseEvent(event)};
             response = makeStatusPacket(
                 _packet.command,
                 success,
@@ -266,20 +242,7 @@ bool RemoteControlTransport::Impl::handleControlPacket(
              _packet.payload.isEmpty())
     {
         bool const lock{_packet.command == remote_control::Command::LockMachine};
-        ScreenLockService* const service{this->m_screenLockService};
-        bool const success{QMetaObject::invokeMethod(
-            service,
-            [service, lock] {
-                if (lock)
-                {
-                    service->lockScreen();
-                }
-                else
-                {
-                    service->unlockScreen();
-                }
-            },
-            Qt::QueuedConnection)};
+        bool const success{this->m_hostServices.requestScreenLock(lock)};
         response = makeStatusPacket(_packet.command,
                                     success,
                                     success ? (lock ? QObject::tr("Lock request accepted.")
@@ -306,9 +269,8 @@ bool RemoteControlTransport::Impl::scheduleOpenFile(
         }
 
         QString const path{remote_control::decodeUtf8(_payload)};
-        bool const success{WindowsPlatformIntegration::isLocalFilePath(path) &&
-                           QFileInfo::exists(path) &&
-                           WindowsPlatformIntegration::openLocalFile(path)};
+        bool const success{this->m_hostServices.isFilePathAllowed(path) &&
+                           QFileInfo::exists(path) && this->m_hostServices.openFile(path)};
         remote_control::Packet const response{
             makeStatusPacket(remote_control::Command::RunFile,
                              success,
@@ -331,7 +293,7 @@ QByteArray RemoteControlTransport::Impl::makeScreenFramePacketBytes(
         return this->m_screenFramePacketCache;
     }
 
-    QByteArray payload{WindowsPlatformIntegration::capturePrimaryScreenPng()};
+    QByteArray payload{this->m_hostServices.captureScreenPng()};
     if (payload.isEmpty())
     {
         return {};

@@ -16,11 +16,12 @@
 ## 项目结构
 
 ```text
-include/          公共头文件
+include/          client、common 与 server 的项目头文件
+server_transport/ 独立的 Windows IOCP 传输 target（include/internal/src）
 src/common/       协议与数据包
 src/client/       Qt 客户端
-src/server/       Qt 应用层与 Windows IOCP 服务端
-src/tests/        协议、状态机、韧性测试与端到端 smoke test
+src/server/       Qt 服务端应用层与 Windows 主机能力适配
+tests/            协议、状态机、韧性测试与端到端 smoke test
 scripts/          构建与运行入口
 .vscode/          VS Code 构建、调试和 clangd 配置
 .claude/skills/   项目编码与审查规则
@@ -34,9 +35,23 @@ scripts/          构建与运行入口
 | `RemoteControlServer` | 远程控制服务端 |
 | `RemoteControlSmokeTests` | 连接到运行中服务端的端到端回归测试 |
 | `RemoteControlProtocolTests` | 无系统副作用的协议边界与 UTF-8 编解码测试 |
+| `RemoteControlClientWorkerLifecycleTests` | 下载取消/替换隔离与客户端 worker 安全关闭测试 |
 | `RemoteControlTransportLifecycleTests` | IOCP 启动、并发连接与安全关闭压力测试 |
 | `RemoteControlConnectionStateTests` | 连接状态转换、并发关闭和容量配额测试 |
 | `RemoteControlTransportResilienceTests` | 真实 TCP 故障注入与并发请求压力测试 |
+
+## 文档入口
+
+| 目标 | 从这里开始 |
+| --- | --- |
+| 第一次构建或查找参数 | [构建与运行脚本](scripts/README.md) |
+| 系统学习项目代码 | [项目代码学习指南](docs/StudyGuide.md) |
+| 理解客户端对象、线程和连接 | [客户端系统架构](docs/ClientArchitecture.md) |
+| 理解 IOCP、状态机和安全停机 | [IOCP 服务端系统架构](docs/ServerArchitecture.md) |
+| 查询 Packet、命令和 payload | [远程控制协议参考](docs/ProtocolReference.md) |
+
+学习指南按“协议 → 客户端 → 服务端边界 → IOCP → 测试”组织，每个阶段都包含入口文件、
+需要回答的问题和完成标准。已经读完客户端时，可以直接从服务端阶段继续。
 
 ## 环境要求
 
@@ -88,6 +103,7 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
    - `RemoteControlServer`
    - `RemoteControlSmokeTests`
    - `RemoteControlProtocolTests`
+   - `RemoteControlClientWorkerLifecycleTests`
    - `RemoteControlTransportLifecycleTests`
    - `RemoteControlConnectionStateTests`
    - `RemoteControlTransportResilienceTests`
@@ -157,8 +173,10 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 
 - `RemoteControlClient` 的界面位于主线程；下载、屏幕流和控制流分别使用常驻 `QThread`。
 - 一次性命令各自创建异步 TCP 连接；屏幕和控制使用两条独立长连接，避免大图像阻塞输入命令。
-- `RemoteControlServer` 是唯一服务端程序；`RemoteControlServerCore` 只是供程序和测试复用的
-  内部静态库。
+- `RemoteControlServer` 是唯一服务端程序；`RemoteControl::ServerTransport` 是供程序和测试复用的
+  独立 IOCP 传输 target，并不是第二个服务端。
+- `RemoteControlHostServices` 是传输层与 Windows/Qt 业务层的边界；服务端通过
+  `WindowsRemoteControlHostServices` 注入磁盘、屏幕、鼠标、文件打开和锁屏能力。
 - `RemoteControlTransport` 使用少量 IOCP completion worker 处理所有 socket 完成通知，阻塞工作
   进入命令、文件或截图任务池。
 - 连接由 `ConnectionRegistry` 持有，并通过 `ConnectionStateMachine` 从等待首包单向进入一个
@@ -186,22 +204,13 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 | 测试 | 覆盖范围 |
 | --- | --- |
 | `RemoteControlProtocolTests` | Packet 非法长度恢复、拆分包头、FileEntry/UTF-8、无效负载和状态负载 |
+| `RemoteControlClientWorkerLifecycleTests` | 本地 TCP 下载取消、替换下载隔离、临时文件回滚和三类 worker 析构回收 |
 | `RemoteControlTransportLifecycleTests` | 连续创建 transport、连接到达期间停止、pending accept/receive 取消与线程回收 |
 | `RemoteControlConnectionStateTests` | 单向状态转换、并发关闭唯一性、总连接容量和长连接配额回收 |
 | `RemoteControlTransportResilienceTests` | 损坏前缀、错误校验、超长声明、半包断开、连接角色错配和 128 次并发请求 |
 | `RemoteControlSmokeTests` | 连接、磁盘与目录、直接网络路径拒绝、并发/慢客户端下载、junction 自身安全删除、监控/控制长连接和文件执行 |
 
 `RemoteControlSmokeTests` 会连接并操作正在运行的服务端，包括截图、鼠标控制路径和文件执行验证，只应在受控测试环境运行。
-
-## 文档导航
-
-| 文档 | 适合什么时候阅读 |
-| --- | --- |
-| [构建与运行脚本](scripts/README.md) | 查找脚本参数、preset、构建目录和测试命令 |
-| [项目代码学习指南](docs/StudyGuide.md) | 第一次系统阅读代码，或按知识点安排学习顺序 |
-| [远程控制协议参考](docs/ProtocolReference.md) | 查询 Packet 布局、命令、payload 和连接阶段 |
-| [客户端系统架构](docs/ClientArchitecture.md) | 理解 GUI、worker、连接模型和对象线程归属 |
-| [IOCP 服务端系统架构](docs/ServerArchitecture.md) | 理解 IOCP、连接状态机、任务池、背压和安全关闭 |
 
 ## 安全提示
 

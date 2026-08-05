@@ -48,7 +48,7 @@ $env:QTDIR = "C:\Qt\6.8.3\msvc2022_64"
 
 `CMakePresets.json` 只保存可共享的生成器、构建类型和目标规则，不包含本机绝对路径。
 `CMakeUserPresets.json` 保存当前计算机的 Qt Kit、Ninja、MSVC 和 Windows SDK 路径，
-并且已被 `.gitignore` 忽略。
+以及生成脚本的 SHA-256 指纹，并且已被 `.gitignore` 忽略。
 
 首次克隆项目或本机工具链发生变化时，运行初始化脚本：
 
@@ -71,10 +71,10 @@ Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Buil
 | `local-msvc-debug` | Debug 全部目标 |
 | `local-msvc-debug-client` | Debug 客户端 `RemoteControlClient` |
 | `local-msvc-debug-server` | Debug 服务端 `RemoteControlServer` |
-| `local-msvc-debug-tests` | Debug 的协议、smoke、生命周期、状态机和韧性测试程序 |
+| `local-msvc-debug-tests` | Debug 的协议、客户端 worker、smoke、transport 生命周期、状态机和韧性测试程序 |
 | `local-msvc-release-client` | Release 客户端 `RemoteControlClient` |
 | `local-msvc-release-server` | Release 服务端 `RemoteControlServer` |
-| `local-msvc-release-tests` | Release 的协议、smoke、生命周期、状态机和韧性测试程序 |
+| `local-msvc-release-tests` | Release 的协议、客户端 worker、smoke、transport 生命周期、状态机和韧性测试程序 |
 
 常用命令：
 
@@ -95,7 +95,9 @@ cmake --build --preset local-msvc-debug-server
 ctest --preset local-msvc-debug
 ```
 
-本地预设已经包含初始化脚本生成的 MSVC 环境。`Build.ps1` 会在本地 preset 缺失或失效时自动生成；工具链发生变化后，可以使用 `-RefreshPresets` 强制刷新。
+本地预设已经包含初始化脚本生成的 MSVC 环境。`Build.ps1` 会比较生成文件中记录的脚本
+SHA-256 指纹，并在本地 preset 缺失、工具链失效或生成脚本发生变化时自动重新生成；
+工具链发生变化后，也可以使用 `-RefreshPresets` 强制刷新。
 
 ## Build.ps1
 
@@ -201,9 +203,10 @@ build/msvc-release
 
 ## 测试
 
-下面四个测试已经注册到 CTest，不需要人工启动服务端：
+下面五个测试已经注册到 CTest，不需要人工启动服务端，也不会产生远程控制系统副作用：
 
 - `RemoteControlProtocolTests`
+- `RemoteControlClientWorkerLifecycleTests`
 - `RemoteControlTransportLifecycleTests`
 - `RemoteControlConnectionStateTests`
 - `RemoteControlTransportResilienceTests`
@@ -222,8 +225,10 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 smoke test 会验证截图、控制通道、文件执行、下载和删除，只应连接受控测试环境。
 其中鼠标控制和文件操作会对服务端产生实际影响。
 
-CTest 中的韧性测试会在进程内使用临时端口启动传输层，注入损坏前缀、错误校验、超长声明、
-半包断开和连接角色错配，并执行并发连接压力测试；它不会触发鼠标、锁定或文件修改操作。
+客户端生命周期测试使用本地 `QTcpServer` 稳定制造“下载进行中”的状态，验证 endpoint
+切换取消、`QSaveFile` 临时文件回滚，以及旧取消结果不会结束替换下载。韧性测试会在进程内
+使用临时端口启动传输层，注入损坏前缀、错误校验、超长声明、半包断开和连接角色错配，
+并执行并发连接压力测试；这些测试不会触发鼠标、锁定或远程文件修改操作。
 
 ## VS Code 和 Qt Creator
 

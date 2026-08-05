@@ -15,8 +15,8 @@ flowchart LR
     subgraph GuiThread["GUI 线程（QApplication 事件循环）"]
         ClientMain["ClientMain<br/>创建 QApplication 和 MainWindow"]
         MainWindow["MainWindow<br/>文件浏览、目录缓存、操作状态"]
-        RemoteScreenWindow["RemoteScreenWindow<br/>画面调度、鼠标事件节流"]
-        ScreenWidget["RemoteScreenWidget<br/>绘制画面、采集鼠标输入"]
+        RemoteScreenWindow["RemoteScreenWindow<br/>窗口生命周期、画面调度"]
+        ScreenWidget["RemoteScreenWidget<br/>绘制画面、鼠标输入与节流"]
         RemoteClient["RemoteClient<br/>网络 facade、generation、结果转发"]
         OneShotRequest["OneShotRequest<br/>一次性异步请求"]
 
@@ -25,11 +25,12 @@ flowchart LR
         MainWindow -->|"按需创建"| RemoteScreenWindow
         RemoteScreenWindow -->|"拥有"| ScreenWidget
         MainWindow -->|"文件和连接请求"| RemoteClient
-        RemoteScreenWindow -->|"帧和控制请求"| RemoteClient
+        RemoteScreenWindow -->|"帧、锁定和解锁请求"| RemoteClient
+        ScreenWidget -->|"mouseEventCreated"| RemoteClient
         RemoteClient -->|"每个短请求创建一个"| OneShotRequest
         RemoteClient -.->|"业务结果 signal"| MainWindow
-        RemoteClient -.->|"画面和请求完成 signal"| RemoteScreenWindow
-        RemoteScreenWindow -.->|"QImage"| ScreenWidget
+        RemoteClient -.->|"请求完成 signal"| RemoteScreenWindow
+        RemoteClient -.->|"QImage"| ScreenWidget
     end
 
     subgraph ScreenStreamThread["屏幕流 QThread"]
@@ -72,7 +73,7 @@ flowchart LR
 
 | 线程 | 主要对象 | 职责 |
 | --- | --- | --- |
-| GUI 线程 | `MainWindow`、`RemoteScreenWindow`、`RemoteClient`、`OneShotRequest` | 界面、短连接异步请求和业务结果转发 |
+| GUI 线程 | `MainWindow`、`RemoteScreenWindow`、`RemoteScreenWidget`、`RemoteClient`、`OneShotRequest` | 界面、短连接异步请求和业务结果转发 |
 | 屏幕流线程 | `ScreenStreamWorker` | 维护屏幕长连接，一次只请求一帧 |
 | 控制线程 | `ControlStreamWorker` | 维护控制长连接，按顺序发送命令并合并鼠标移动 |
 | 下载线程 | `FileDownloadWorker` | 流式接收文件并写入 `QSaveFile` |
@@ -94,8 +95,8 @@ flowchart LR
 | 控制长连接 | `ControlStreamWorker` | 鼠标、模拟锁定和解锁 | 控制窗口关闭时断开 |
 
 `RemoteClient` 是 GUI 与网络实现之间的 facade。GUI 只调用业务接口，不直接操作 worker
-或 socket。监控和控制结果返回后，`RemoteClient` 会根据 generation 丢弃旧会话结果；
-有效结果以及下载进度再通过业务 signal 转发给界面。
+或 socket。监控、控制和下载结果返回后，`RemoteClient` 会根据各自的 generation 丢弃旧结果；
+只有仍属于当前操作的业务结果和下载进度才会转发给界面。
 
 ## 对象所有权与关闭顺序
 
@@ -106,6 +107,7 @@ flowchart LR
 | 三个 `QThread` | `RemoteClient` | 析构中 `quit()` 后 `wait()` |
 | 三个 worker | 创建后 `moveToThread()` | 对应线程发出 `finished` 后 `deleteLater()` |
 | `RemoteScreenWindow` | `MainWindow` 按需创建并作为 parent | 关闭时停止两条流并保留窗口，随主窗口销毁 |
+| `RemoteScreenWidget` | `RemoteScreenWindow` 创建，screen container 作为 parent | 随远程屏幕窗口销毁 |
 
 `RemoteClient` 析构时，先使用 `Qt::BlockingQueuedConnection` 让 worker 在自己的线程中执行
 `shutdown()`，然后退出并等待线程。顺序不能颠倒：先停止事件循环会让 worker 无法处理清理任务，
@@ -113,17 +115,38 @@ flowchart LR
 
 ## 结果有效性
 
-endpoint、屏幕流和控制流分别使用独立 generation。异步任务开始时捕获 generation，结果返回
-GUI 线程后只有与当前值匹配才会继续转发。修改 host/port 会同时让三个范围失效；停止屏幕或
-控制流只影响对应会话，不会误伤其他请求。
+endpoint、下载、屏幕流和控制流分别使用 generation。异步任务开始时捕获对应值，结果返回
+GUI 线程后只有与当前值匹配才会继续转发。修改 host/port 会让 endpoint 及三个长期操作范围
+失效；停止屏幕或控制流只影响对应会话，不会误伤其他请求。
 
 `m_screenFramePending` 是 GUI 侧的单帧调度状态，不是 worker 连接状态。它从请求发出保持到该帧
 成功、失败或结束，避免按钮状态或定时调度在帧间短暂失效。
 
-## 推荐代码阅读顺序
+下载结果同时携带 endpoint generation 和独立的 download generation。修改 host/port 时，客户端
+会递增两者并在下载线程中取消旧传输；开始新下载时只递增 download generation。因此旧进度、
+旧完成或旧取消结果都不能结束后续下载，未提交的 `QSaveFile` 临时内容也会被删除。
 
-1. `ClientMain.cpp → MainWindow.cpp`：找到界面入口和业务操作。
-2. `RemoteClient.cpp`：先看构造、析构和 `testConnection()`，再看跨线程 `invokeMethod()`。
-3. `OneShotRequest`：理解异步短连接、缓冲区解析和 `CallbackScope`。
-4. `ScreenStreamWorker`、`ControlStreamWorker`、`FileDownloadWorker`：分别理解三种长期任务。
-5. `RemoteScreenWindow`、`RemoteScreenWidget`：最后回到帧调度、绘制和鼠标坐标转换。
+```text
+旧下载 E0/D1 进行中
+  → endpoint 改为 E1，download generation 变为 D2，并排队取消 E1/D2
+  → 若立即启动新下载，download generation 再变为 D3
+  → 旧进度 E0/D1 被丢弃
+  → 旧取消 E1/D2 被丢弃
+  → 只有新下载 E1/D3 能更新当前 GUI
+```
+
+取消没有额外的协议命令：worker 在自己的线程取消 `QSaveFile`、中止下载 socket，并通过本地
+signal 报告结果。服务端从 TCP 断开完成通知中回收对应下载连接。
+
+`OneShotRequest` 还需要防止模态对话框的嵌套事件循环在回调返回前处理对象删除；完整案例和
+`CallbackScope` 状态转换参见 [项目代码学习指南](StudyGuide.md) 的客户端网络阶段。
+
+## 源码入口
+
+1. [ClientMain.cpp](../src/client/ClientMain.cpp) → [MainWindow.cpp](../src/client/MainWindow.cpp)：界面入口和业务操作。
+2. [RemoteClient.cpp](../src/client/RemoteClient.cpp)：网络 facade、线程启停和 `OneShotRequest`。
+3. [ScreenStreamWorker.cpp](../src/client/ScreenStreamWorker.cpp)、
+   [ControlStreamWorker.cpp](../src/client/ControlStreamWorker.cpp)、
+   [FileDownloadWorker.cpp](../src/client/FileDownloadWorker.cpp)：三种长期任务。
+4. [RemoteScreenWindow.cpp](../src/client/RemoteScreenWindow.cpp) 和
+   [RemoteScreenWidget.cpp](../src/client/RemoteScreenWidget.cpp)：帧调度、绘制和鼠标坐标转换。

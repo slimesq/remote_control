@@ -75,6 +75,10 @@
 总字节数，负值表示文件无法打开。成功后续 Packet 的 payload 是原始文件字节；客户端累计收到
 声明长度后使用 `QSaveFile::commit()` 原子替换目标文件。
 
+协议没有单独的“取消下载”命令。客户端取消时会中止该下载连接并放弃 `QSaveFile` 临时内容；
+服务端通过 TCP 断开完成通知停止该连接后续发送。客户端本地使用 endpoint generation 和
+download generation 过滤已经排队的旧进度、完成或取消结果，这不会改变线上 Packet 格式。
+
 ## 鼠标 payload
 
 `MouseEventPacket` 固定为 12 bytes，并使用 1-byte packing：

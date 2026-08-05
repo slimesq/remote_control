@@ -30,11 +30,22 @@ public slots:
      * @param _port Remote server TCP port.
      * @param _remotePath Source path on the remote host.
      * @param _localPath Destination path on the local host.
+     * @param _endpointGeneration Endpoint generation captured by the caller.
+     * @param _downloadGeneration Download operation generation captured by the caller.
      */
     void startDownload(QString const& _host,
                        quint16 _port,
                        QString const& _remotePath,
-                       QString const& _localPath);
+                       QString const& _localPath,
+                       quint64 _endpointGeneration,
+                       quint64 _downloadGeneration);
+
+    /**
+     * @brief Cancels the active download while keeping the worker reusable.
+     * @param _endpointGeneration Endpoint generation used for the cancellation result.
+     * @param _downloadGeneration Download generation used for the cancellation result.
+     */
+    void cancelActiveDownload(quint64 _endpointGeneration, quint64 _downloadGeneration);
 
     /** @brief Cancels active work before the download thread exits. */
     void shutdown();
@@ -42,20 +53,30 @@ public slots:
 signals:
     /**
      * @brief Reports received download bytes.
+     * @param _endpointGeneration Endpoint generation captured at startup.
+     * @param _downloadGeneration Download operation generation captured at startup.
      * @param _remotePath Downloaded remote path.
      * @param _received Number of bytes written locally.
      * @param _total Expected total byte count.
      */
-    void progress(QString const& _remotePath, qint64 _received, qint64 _total);
+    void progress(quint64 _endpointGeneration,
+                  quint64 _downloadGeneration,
+                  QString const& _remotePath,
+                  qint64 _received,
+                  qint64 _total);
 
     /**
      * @brief Reports the final download result.
+     * @param _endpointGeneration Endpoint generation captured at startup.
+     * @param _downloadGeneration Download operation generation captured at startup.
      * @param _remotePath Downloaded remote path.
      * @param _localPath Local destination path.
      * @param _success Whether the download succeeded.
      * @param _message User-facing result message.
      */
-    void finished(QString const& _remotePath,
+    void finished(quint64 _endpointGeneration,
+                  quint64 _downloadGeneration,
+                  QString const& _remotePath,
                   QString const& _localPath,
                   bool _success,
                   QString const& _message);
@@ -112,6 +133,8 @@ private:
     quint16 m_port{0};                        ///< Server TCP port.
     QString m_remotePath;                     ///< Remote source path being downloaded.
     QString m_localPath;                      ///< Local destination path being written.
+    quint64 m_endpointGeneration{0};          ///< Endpoint generation captured at startup.
+    quint64 m_downloadGeneration{0};          ///< Download generation captured at startup.
     QByteArray m_buffer;                      ///< Bytes waiting to form complete response packets.
     qint64 m_expectedFileSize{-1};            ///< Declared file size, or -1 before the size header.
     qint64 m_writtenBytes{0};                 ///< Number of file bytes written locally.

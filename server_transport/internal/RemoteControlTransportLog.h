@@ -4,7 +4,7 @@
 #include <QString>
 
 /** @brief Severity assigned to one structured server event. */
-enum class ServerLogLevel
+enum class TransportLogLevel
 {
     Debug,     ///< Detailed connection lifecycle information.
     Info,      ///< Normal server lifecycle information.
@@ -18,4 +18,6 @@ enum class ServerLogLevel
  * @param _event Stable machine-readable event name.
  * @param _fields Event-specific structured fields.
  */
-void writeServerLog(ServerLogLevel _level, QString const& _event, QJsonObject const& _fields = {});
+void writeTransportLog(TransportLogLevel _level,
+                       QString const& _event,
+                       QJsonObject const& _fields = {});

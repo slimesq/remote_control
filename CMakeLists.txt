@@ -20,11 +20,11 @@ if(QT_VERSION_MAJOR EQUAL 6)
     qt_standard_project_setup()
 endif()
 
-add_subdirectory(include)
 add_subdirectory(src/common)
+add_subdirectory(server_transport)
 add_subdirectory(src/client)
 add_subdirectory(src/server)
 
 if(BUILD_TESTING)
-    add_subdirectory(src/tests)
+    add_subdirectory(tests)
 endif()

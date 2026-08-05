@@ -1,4 +1,4 @@
-#include "server/RemoteControlTransportInternal.h"
+#include "internal/RemoteControlTransportImpl.h"
 
 #include "common/Protocol.h"
 

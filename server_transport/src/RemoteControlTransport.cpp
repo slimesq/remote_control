@@ -1,6 +1,6 @@
-#include "server/RemoteControlTransportInternal.h"
+#include "internal/RemoteControlTransportImpl.h"
 
-#include "server/RemoteControlServerLog.h"
+#include "internal/RemoteControlTransportLog.h"
 
 #include <WS2tcpip.h>
 
@@ -11,30 +11,31 @@
 namespace
 {
 
-constexpr int InitialAcceptCount{8};
-constexpr int MinimumCompletionWorkerCount{2};
-constexpr int MaximumCompletionWorkerCount{4};
-constexpr int ShellCommandWorkerCount{2};
-constexpr int FileWorkerCount{4};
-constexpr int ScreenCaptureWorkerCount{2};
-constexpr std::size_t MaximumQueuedShellCommandTasks{16};
-constexpr std::size_t MaximumQueuedTasks{64};
-constexpr std::size_t MaximumQueuedScreenCaptureTasks{8};
 constexpr std::size_t MaximumQueuedSendBytes{2U * 1024U * 1024U};
 constexpr std::size_t MaximumSingleSendBytes{16U * 1024U * 1024U};
 constexpr int ReceiveChunkSize{8 * 1024};
-constexpr std::size_t MaximumConnections{256};
-constexpr int MaximumScreenStreamConnections{4};
-constexpr int MaximumControlStreamConnections{4};
-constexpr qint64 FirstRequestIdleTimeoutMs{15 * 1000};
-constexpr qint64 OneShotIdleTimeoutMs{30 * 1000};
-constexpr qint64 FileTransferIdleTimeoutMs{30 * 1000};
-constexpr qint64 ScreenStreamIdleTimeoutMs{30 * 1000};
-constexpr qint64 ControlStreamIdleTimeoutMs{5 * 60 * 1000};
 constexpr ULONG_PTR StopCompletionKey{1};
 constexpr DWORD AcceptAddressPadding{16};
 
 using iocp_detail::monotonicMilliseconds;
+
+/**
+ * @brief Checks that configurable worker, capacity, and timeout limits are usable.
+ * @param _options Transport configuration to validate.
+ * @return true when every required limit is positive and internally ordered.
+ */
+bool hasValidOptions(RemoteControlTransportOptions const& _options) noexcept
+{
+    return _options.initialAcceptCount > 0 && _options.minimumCompletionWorkerCount > 0 &&
+        _options.maximumCompletionWorkerCount >= _options.minimumCompletionWorkerCount &&
+        _options.shellCommandWorkerCount > 0 && _options.fileWorkerCount > 0 &&
+        _options.screenCaptureWorkerCount > 0 && _options.maximumQueuedShellCommandTasks > 0 &&
+        _options.maximumQueuedFileTasks > 0 && _options.maximumQueuedScreenCaptureTasks > 0 &&
+        _options.maximumConnections > 0 && _options.maximumScreenStreamConnections > 0 &&
+        _options.maximumControlStreamConnections > 0 && _options.firstRequestIdleTimeoutMs > 0 &&
+        _options.oneShotIdleTimeoutMs > 0 && _options.fileTransferIdleTimeoutMs > 0 &&
+        _options.screenStreamIdleTimeoutMs > 0 && _options.controlStreamIdleTimeoutMs > 0;
+}
 
 /**
  * @brief Checks whether another send fits the bounded per-connection backlog.
@@ -58,13 +59,18 @@ bool hasSendCapacity(std::size_t _queuedBytes, std::size_t _additionalBytes) noe
 
 }  // namespace
 
-RemoteControlTransport::Impl::Impl(ScreenLockService* _screenLockService)
-    : m_screenLockService{_screenLockService},
-      m_shellCommandTaskPool{ShellCommandWorkerCount, MaximumQueuedShellCommandTasks},
-      m_fileTaskPool{FileWorkerCount, MaximumQueuedTasks},
-      m_screenCaptureTaskPool{ScreenCaptureWorkerCount, MaximumQueuedScreenCaptureTasks},
-      m_connectionRegistry{
-          MaximumConnections, MaximumScreenStreamConnections, MaximumControlStreamConnections}
+RemoteControlTransport::Impl::Impl(RemoteControlHostServices& _hostServices,
+                                   RemoteControlTransportOptions const& _options)
+    : m_hostServices{_hostServices},
+      m_options{_options},
+      m_shellCommandTaskPool{_options.shellCommandWorkerCount,
+                             _options.maximumQueuedShellCommandTasks},
+      m_fileTaskPool{_options.fileWorkerCount, _options.maximumQueuedFileTasks},
+      m_screenCaptureTaskPool{_options.screenCaptureWorkerCount,
+                              _options.maximumQueuedScreenCaptureTasks},
+      m_connectionRegistry{_options.maximumConnections,
+                           _options.maximumScreenStreamConnections,
+                           _options.maximumControlStreamConnections}
 {
 }
 
@@ -75,11 +81,12 @@ RemoteControlTransport::Impl::~Impl()
 
 bool RemoteControlTransport::Impl::start(quint16 _port)
 {
-    if (!this->m_winsockRuntime.isValid() || this->m_completionPort || this->m_stopping.load())
+    if (!hasValidOptions(this->m_options) || !this->m_winsockRuntime.isValid() ||
+        this->m_completionPort || this->m_stopping.load())
     {
-        writeServerLog(ServerLogLevel::Critical,
-                       QStringLiteral("transport.start_rejected"),
-                       {{QStringLiteral("reason"), QStringLiteral("invalid_lifecycle")}});
+        writeTransportLog(TransportLogLevel::Critical,
+                          QStringLiteral("transport.start_rejected"),
+                          {{QStringLiteral("reason"), QStringLiteral("invalid_lifecycle")}});
         return false;
     }
 
@@ -139,9 +146,9 @@ bool RemoteControlTransport::Impl::start(quint16 _port)
     this->m_listeningPort.store(ntohs(boundAddress.sin_port));
 
     unsigned int const hardwareThreads{std::max(1U, std::thread::hardware_concurrency())};
-    int const workerCount{
-        std::max(MinimumCompletionWorkerCount,
-                 std::min(MaximumCompletionWorkerCount, static_cast<int>(hardwareThreads)))};
+    int const workerCount{std::max(
+        this->m_options.minimumCompletionWorkerCount,
+        std::min(this->m_options.maximumCompletionWorkerCount, static_cast<int>(hardwareThreads)))};
     this->m_completionThreads.reserve(static_cast<std::size_t>(workerCount));
     for (int index{0}; index < workerCount; ++index)
     {
@@ -150,16 +157,16 @@ bool RemoteControlTransport::Impl::start(quint16 _port)
     this->m_idleTimeoutThread = std::thread{[this] { this->runIdleTimeoutMonitor(); }};
 
     this->replenishAccepts();
-    if (this->m_pendingAcceptOperationCount.load() != InitialAcceptCount)
+    if (this->m_pendingAcceptOperationCount.load() != this->m_options.initialAcceptCount)
     {
         this->stop();
         return false;
     }
-    writeServerLog(ServerLogLevel::Info,
-                   QStringLiteral("transport.started"),
-                   {{QStringLiteral("port"), this->m_listeningPort.load()},
-                    {QStringLiteral("completion_workers"), workerCount},
-                    {QStringLiteral("initial_accepts"), InitialAcceptCount}});
+    writeTransportLog(TransportLogLevel::Info,
+                      QStringLiteral("transport.started"),
+                      {{QStringLiteral("port"), this->m_listeningPort.load()},
+                       {QStringLiteral("completion_workers"), workerCount},
+                       {QStringLiteral("initial_accepts"), this->m_options.initialAcceptCount}});
     return true;
 }
 
@@ -173,10 +180,10 @@ void RemoteControlTransport::Impl::stop()
             return;
         }
     }
-    writeServerLog(ServerLogLevel::Info,
-                   QStringLiteral("transport.stopping"),
-                   {{QStringLiteral("active_connections"),
-                     static_cast<qint64>(this->m_connectionRegistry.size())}});
+    writeTransportLog(TransportLogLevel::Info,
+                      QStringLiteral("transport.stopping"),
+                      {{QStringLiteral("active_connections"),
+                        static_cast<qint64>(this->m_connectionRegistry.size())}});
     this->m_listeningPort.store(0);
     this->m_idleTimeoutCondition.notify_all();
 
@@ -242,7 +249,7 @@ void RemoteControlTransport::Impl::stop()
         }
         this->m_completionPort = nullptr;
     }
-    writeServerLog(ServerLogLevel::Info, QStringLiteral("transport.stopped"));
+    writeTransportLog(TransportLogLevel::Info, QStringLiteral("transport.stopped"));
 }
 
 quint16 RemoteControlTransport::Impl::listeningPort() const noexcept
@@ -315,7 +322,7 @@ void RemoteControlTransport::Impl::replenishAccepts()
 {
     std::lock_guard<std::mutex> const lock{this->m_acceptMutex};
     while (!this->m_stopping.load() &&
-           this->m_pendingAcceptOperationCount.load() < InitialAcceptCount)
+           this->m_pendingAcceptOperationCount.load() < this->m_options.initialAcceptCount)
     {
         if (!this->postAccept())
         {
@@ -466,23 +473,23 @@ void RemoteControlTransport::Impl::runIdleTimeoutMonitor()
             qint64 timeout{0};
             if (currentPhase == ConnectionPhase::AwaitingRequest)
             {
-                timeout = FirstRequestIdleTimeoutMs;
+                timeout = this->m_options.firstRequestIdleTimeoutMs;
             }
             else if (currentPhase == ConnectionPhase::OneShot)
             {
-                timeout = OneShotIdleTimeoutMs;
+                timeout = this->m_options.oneShotIdleTimeoutMs;
             }
             else if (currentPhase == ConnectionPhase::FileTransfer)
             {
-                timeout = FileTransferIdleTimeoutMs;
+                timeout = this->m_options.fileTransferIdleTimeoutMs;
             }
             else if (currentPhase == ConnectionPhase::ScreenStream)
             {
-                timeout = ScreenStreamIdleTimeoutMs;
+                timeout = this->m_options.screenStreamIdleTimeoutMs;
             }
             else if (currentPhase == ConnectionPhase::ControlStream)
             {
-                timeout = ControlStreamIdleTimeoutMs;
+                timeout = this->m_options.controlStreamIdleTimeoutMs;
             }
             if (timeout > 0 && now - connection->lastActivityMs.load() >= timeout)
             {
@@ -543,16 +550,16 @@ void RemoteControlTransport::Impl::handleAcceptCompletion(std::unique_ptr<IoOper
     if (!connection)
     {
         closesocket(acceptedSocket);
-        writeServerLog(ServerLogLevel::Warning,
-                       QStringLiteral("connection.rejected"),
-                       {{QStringLiteral("reason"), QStringLiteral("capacity_limit")}});
+        writeTransportLog(TransportLogLevel::Warning,
+                          QStringLiteral("connection.rejected"),
+                          {{QStringLiteral("reason"), QStringLiteral("capacity_limit")}});
         return;
     }
-    writeServerLog(ServerLogLevel::Debug,
-                   QStringLiteral("connection.accepted"),
-                   {{QStringLiteral("connection_id"), static_cast<qint64>(connection->id)},
-                    {QStringLiteral("active_connections"),
-                     static_cast<qint64>(this->m_connectionRegistry.size())}});
+    writeTransportLog(TransportLogLevel::Debug,
+                      QStringLiteral("connection.accepted"),
+                      {{QStringLiteral("connection_id"), static_cast<qint64>(connection->id)},
+                       {QStringLiteral("active_connections"),
+                        static_cast<qint64>(this->m_connectionRegistry.size())}});
     static_cast<void>(this->postReceive(connection));
 }
 
@@ -666,12 +673,13 @@ bool RemoteControlTransport::Impl::enqueueBytes(
         }
         if (!hasSendCapacity(_connection->queuedSendBytes, bytesSize))
         {
-            writeServerLog(ServerLogLevel::Warning,
-                           QStringLiteral("connection.backpressure"),
-                           {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
-                            {QStringLiteral("queued_bytes"),
-                             static_cast<qint64>(_connection->queuedSendBytes)},
-                            {QStringLiteral("additional_bytes"), static_cast<qint64>(bytesSize)}});
+            writeTransportLog(
+                TransportLogLevel::Warning,
+                QStringLiteral("connection.backpressure"),
+                {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
+                 {QStringLiteral("queued_bytes"),
+                  static_cast<qint64>(_connection->queuedSendBytes)},
+                 {QStringLiteral("additional_bytes"), static_cast<qint64>(bytesSize)}});
             return false;
         }
 
@@ -752,12 +760,12 @@ void RemoteControlTransport::Impl::closeConnection(
         }
     }
     _connection->state.markClosed();
-    writeServerLog(
+    writeTransportLog(
         _reason == ConnectionCloseReason::ProtocolViolation ||
                 _reason == ConnectionCloseReason::Backpressure ||
                 _reason == ConnectionCloseReason::CapacityLimit
-            ? ServerLogLevel::Warning
-            : ServerLogLevel::Debug,
+            ? TransportLogLevel::Warning
+            : TransportLogLevel::Debug,
         QStringLiteral("connection.closed"),
         {{QStringLiteral("connection_id"), static_cast<qint64>(_connection->id)},
          {QStringLiteral("previous_phase"), iocp_detail::connectionPhaseName(previousPhase)},
@@ -785,8 +793,14 @@ void RemoteControlTransport::Impl::finishOperation() noexcept
     }
 }
 
-RemoteControlTransport::RemoteControlTransport(ScreenLockService* _screenLockService)
-    : m_impl{std::make_unique<Impl>(_screenLockService)}
+RemoteControlTransport::RemoteControlTransport(RemoteControlHostServices& _hostServices)
+    : RemoteControlTransport{_hostServices, RemoteControlTransportOptions{}}
+{
+}
+
+RemoteControlTransport::RemoteControlTransport(RemoteControlHostServices& _hostServices,
+                                               RemoteControlTransportOptions const& _options)
+    : m_impl{std::make_unique<Impl>(_hostServices, _options)}
 {
 }
 

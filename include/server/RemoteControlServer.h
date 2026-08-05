@@ -7,6 +7,7 @@
 
 class ScreenLockService;
 class RemoteControlTransport;
+class WindowsRemoteControlHostServices;
 
 /** @brief Adapts the Qt application layer to the Windows IOCP network server. */
 class RemoteControlServer : public QObject
@@ -44,6 +45,8 @@ private:
     /** @brief Stops the IOCP transport once during application shutdown. */
     void shutdownTransport();
 
-    ScreenLockService* m_screenLockService{nullptr};      ///< Parent-owned GUI screen-lock service.
+    ScreenLockService* m_screenLockService{nullptr};  ///< Parent-owned GUI screen-lock service.
+    std::unique_ptr<WindowsRemoteControlHostServices>
+        m_hostServices;  ///< Windows implementation of transport host operations.
     std::unique_ptr<RemoteControlTransport> m_transport;  ///< Windows IOCP network transport.
 };

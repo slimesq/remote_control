@@ -5,6 +5,7 @@ add_executable(RemoteControlClient
     MainWindow.cpp
     MainWindow.ui
     RemoteClient.cpp
+    RemoteScreenWidget.cpp
     RemoteScreenWindow.cpp
     RemoteScreenWindow.ui
     ScreenStreamWorker.cpp
@@ -12,6 +13,7 @@ add_executable(RemoteControlClient
     ${PROJECT_SOURCE_DIR}/include/client/FileDownloadWorker.h
     ${PROJECT_SOURCE_DIR}/include/client/MainWindow.h
     ${PROJECT_SOURCE_DIR}/include/client/RemoteClient.h
+    ${PROJECT_SOURCE_DIR}/include/client/RemoteScreenWidget.h
     ${PROJECT_SOURCE_DIR}/include/client/RemoteScreenWindow.h
     ${PROJECT_SOURCE_DIR}/include/client/ScreenStreamWorker.h
 )

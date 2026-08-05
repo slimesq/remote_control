@@ -518,11 +518,30 @@ RemoteClient::RemoteClient(QObject* _parent)
     connect(this->m_fileDownloadWorker,
             &FileDownloadWorker::progress,
             this,
-            &RemoteClient::downloadProgress);
+            [this](quint64 _endpointGeneration,
+                   quint64 _downloadGeneration,
+                   QString const& _remotePath,
+                   qint64 _received,
+                   qint64 _total) {
+                if (this->isDownloadGenerationCurrent(_endpointGeneration, _downloadGeneration))
+                {
+                    emit this->downloadProgress(_remotePath, _received, _total);
+                }
+            });
     connect(this->m_fileDownloadWorker,
             &FileDownloadWorker::finished,
             this,
-            &RemoteClient::downloadFinished);
+            [this](quint64 _endpointGeneration,
+                   quint64 _downloadGeneration,
+                   QString const& _remotePath,
+                   QString const& _localPath,
+                   bool _success,
+                   QString const& _message) {
+                if (this->isDownloadGenerationCurrent(_endpointGeneration, _downloadGeneration))
+                {
+                    emit this->downloadFinished(_remotePath, _localPath, _success, _message);
+                }
+            });
 
     this->m_screenStreamThread->start();
     this->m_controlStreamThread->start();
@@ -573,8 +592,17 @@ void RemoteClient::setEndpoint(QString const& _host, quint16 _port)
     if (endpointChanged)
     {
         ++this->m_endpointGeneration;
+        ++this->m_downloadGeneration;
         this->stopScreenStream();
         this->stopControlStream();
+        quint64 const endpointGeneration{this->m_endpointGeneration};
+        quint64 const downloadGeneration{this->m_downloadGeneration};
+        QMetaObject::invokeMethod(
+            this->m_fileDownloadWorker,
+            [worker = this->m_fileDownloadWorker, endpointGeneration, downloadGeneration] {
+                worker->cancelActiveDownload(endpointGeneration, downloadGeneration);
+            },
+            Qt::QueuedConnection);
     }
     this->m_host = _host;
     this->m_port = _port;
@@ -647,14 +675,24 @@ void RemoteClient::deleteRemotePath(QString const& _path)
 
 void RemoteClient::downloadRemoteFile(QString const& _remotePath, QString const& _localPath)
 {
+    ++this->m_downloadGeneration;
     QString const host{this->m_host};
     quint16 const port{this->m_port};
+    quint64 const endpointGeneration{this->m_endpointGeneration};
+    quint64 const downloadGeneration{this->m_downloadGeneration};
     // Queue the download startup on the worker's thread without blocking the caller.
     // QueuedConnection posts the lambda to the worker thread's event loop and returns immediately.
     QMetaObject::invokeMethod(
         this->m_fileDownloadWorker,
-        [worker = this->m_fileDownloadWorker, host, port, _remotePath, _localPath] {
-            worker->startDownload(host, port, _remotePath, _localPath);
+        [worker = this->m_fileDownloadWorker,
+         host,
+         port,
+         _remotePath,
+         _localPath,
+         endpointGeneration,
+         downloadGeneration] {
+            worker->startDownload(
+                host, port, _remotePath, _localPath, endpointGeneration, downloadGeneration);
         },
         Qt::QueuedConnection);
 }
@@ -705,6 +743,13 @@ bool RemoteClient::hasPendingScreenFrame() const noexcept
 bool RemoteClient::isEndpointGenerationCurrent(quint64 _generation) const noexcept
 {
     return _generation == this->m_endpointGeneration;
+}
+
+bool RemoteClient::isDownloadGenerationCurrent(quint64 _endpointGeneration,
+                                               quint64 _downloadGeneration) const noexcept
+{
+    return this->isEndpointGenerationCurrent(_endpointGeneration) &&
+        _downloadGeneration == this->m_downloadGeneration;
 }
 
 void RemoteClient::setScreenFramePending(bool _pending)

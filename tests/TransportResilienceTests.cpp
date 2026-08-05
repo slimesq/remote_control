@@ -1,5 +1,6 @@
 #include "common/Packet.h"
-#include "server/RemoteControlTransport.h"
+#include "FakeRemoteControlHostServices.h"
+#include "RemoteControlTransport.h"
 
 #include <QCoreApplication>
 #include <QDataStream>
@@ -243,7 +244,7 @@ int main(int argc, char* argv[])
     QCoreApplication const application{argc, argv};
     QLoggingCategory::setFilterRules(QStringLiteral("remote_control.server.debug=false"));
 
-    RemoteControlTransport server{nullptr};
+    RemoteControlTransport server{fakeRemoteControlHostServices()};
     if (!server.start(0) || server.listeningPort() == 0)
     {
         std::cerr << "FAILED: resilience server did not start" << std::endl;

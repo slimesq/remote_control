@@ -21,19 +21,22 @@ flowchart LR
     State --> FilePool["文件任务池<br/>目录、下载、删除"]
     State --> ScreenCapturePool["截图任务池<br/>屏幕捕获与 PNG 编码"]
     State --> DirectWork["短任务<br/>连接测试、磁盘、鼠标"]
-    State --> GuiQueue["queued invocation<br/>模拟锁定/解锁"]
+    State --> HostServices["RemoteControlHostServices<br/>主机能力接口"]
     CommandPool --> State
     FilePool --> State
     ScreenCapturePool --> State
     DirectWork --> State
-    GuiQueue --> ScreenLockService["Qt GUI 线程<br/>ScreenLockService / ScreenLockWindow"]
+    HostServices --> WindowsAdapter["WindowsRemoteControlHostServices<br/>Windows / Qt 适配器"]
+    WindowsAdapter --> ScreenLockService["Qt GUI 线程<br/>ScreenLockService / ScreenLockWindow"]
+    WindowsAdapter --> Platform["WindowsPlatformIntegration<br/>屏幕 / 鼠标 / shell / 路径"]
     State --> Iocp
 ```
 
-服务端仍然只有一个可执行程序 `RemoteControlServer`。内部静态库
-`RemoteControlServerCore` 复用 IOCP 核心代码供生命周期测试调用，并不是第二个服务端。
-`RemoteControlServer` 负责 Qt 应用生命周期和 `ScreenLockService`，`RemoteControlTransport` 的 PIMPL 隐藏
-Windows socket、`OVERLAPPED` 和完成端口类型，因此 Qt 层头文件不会暴露 Windows 网络细节。
+服务端仍然只有一个可执行程序 `RemoteControlServer`。独立静态库 target
+`RemoteControl::ServerTransport` 复用 IOCP 传输代码供服务端和测试调用，并不是第二个服务端。
+`RemoteControlServer` 负责 Qt 应用生命周期和 `ScreenLockService`；
+`WindowsRemoteControlHostServices` 把 Windows/Qt 主机能力注入传输层；`RemoteControlTransport` 的
+PIMPL 隐藏 Windows socket、`OVERLAPPED` 和完成端口类型，因此应用层头文件不会暴露 Windows 网络细节。
 
 IOCP 实现按变化原因拆成多个逻辑组件，仍共同服务于同一个 `RemoteControlTransport::Impl`，不会增加额外的网络层级：
 
@@ -43,10 +46,14 @@ IOCP 实现按变化原因拆成多个逻辑组件，仍共同服务于同一个
 | `RemoteControlTransportProtocol.cpp` | 首包路由、控制流、屏幕流和打开文件命令 |
 | `RemoteControlTransportFileTransfer.cpp` | 目录枚举、文件下载和删除 |
 | `RemoteControlTransportRuntime.cpp` | Winsock 生命周期、固定任务池、连接状态机和连接注册表 |
-| `RemoteControlServerLog.cpp` | 统一输出带事件名、连接标识、线程标识和时间戳的结构化 JSON 日志 |
+| `RemoteControlTransportLog.cpp` | 统一输出带事件名、连接标识、线程标识和时间戳的结构化 JSON 日志 |
 
-`RemoteControlTransportInternal.h` 只共享上述实现文件所需的内部类型和声明；外部模块仍只包含
-`include/server/RemoteControlTransport.h`。
+`RemoteControlTransportImpl.h` 位于 target 的 `internal` 目录，只共享上述实现文件和白盒状态机测试
+所需的内部类型；普通调用方只包含 `RemoteControlTransport.h` 和
+`RemoteControlHostServices.h`。`src` 目录因此只保留 `.cpp` 实现文件。
+
+`RemoteControlTransportOptions` 集中保存 completion worker、任务池、连接容量和各阶段空闲超时。
+服务端使用默认值；压力测试可以注入较小限制，以稳定复现容量、超时和停机边界。
 
 阅读实现时应持续检查以下三个不变量：
 
@@ -116,7 +123,7 @@ AwaitingRequest ──► OneShot / FileTransfer / ScreenStream / ControlStream
 
 ## 结构化诊断日志
 
-服务端通过 Qt logging category `remote_control.server` 输出单行紧凑 JSON。公共字段包括
+transport 通过 Qt logging category `remote_control.server.transport` 输出单行紧凑 JSON。公共字段包括
 `event`、`timestamp_utc` 和 `thread_id`；连接事件还会携带 `connection_id`、`phase`、
 `reason` 和 `active_connections` 等字段。当前关键事件包括服务端启动/停止、连接接受、首包分类、
 发送背压以及连接关闭。这样可以按事件名或连接标识关联同一条连接跨线程发生的日志，而不需要
@@ -126,7 +133,7 @@ AwaitingRequest ──► OneShot / FileTransfer / ScreenStream / ControlStream
 需要调整详细程度时可使用 `QT_LOGGING_RULES`，例如：
 
 ```powershell
-$env:QT_LOGGING_RULES = "remote_control.server.debug=false"
+$env:QT_LOGGING_RULES = "remote_control.server.transport.debug=false"
 ```
 
 ## Qt 与 IOCP 的边界
@@ -134,8 +141,10 @@ $env:QT_LOGGING_RULES = "remote_control.server.debug=false"
 IOCP 只替换服务端网络传输层，不改变协议，也不要求客户端改用 Windows API。客户端继续使用
 `QTcpSocket`，Qt Creator 和 VS Code 仍然构建同一个 CMake target。
 
-Windows 鼠标注入、屏幕捕获、文件打开等平台行为集中在 `WindowsPlatformIntegration`。文件打开会先
-投递到 shell-command 任务池；模拟锁定和解锁需要操作 `ScreenLockWindow`，所以 IOCP worker 使用
+IOCP target 只依赖 `RemoteControlHostServices`，不直接包含 `ScreenLockService` 或
+`WindowsPlatformIntegration`。服务端中的 `WindowsRemoteControlHostServices` 负责把磁盘枚举、路径检查、
+鼠标注入、屏幕捕获、文件打开和锁屏请求转接到 Windows/Qt 实现。文件打开会先投递到
+shell-command 任务池；模拟锁定和解锁需要操作 `ScreenLockWindow`，所以适配器使用
 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 把操作投递给 `ScreenLockService` 所属的
 GUI 线程。本地恢复快捷键也通过 `ScreenLockWindow::unlockRequested()` 回到 `ScreenLockService`，保证
 测试计时器和锁定状态同步。模拟锁定会保存原有任务栏可见性和 cursor clip 区域，解锁时按原值
@@ -175,21 +184,29 @@ RemoteControlServer::shutdownTransport()
 上述测试直接启动嵌入式 `RemoteControlTransport` 并使用临时端口，不需要人工启动服务端，也不会执行
 鼠标、锁定、删除或文件运行等系统副作用。`RemoteControlSmokeTests` 仍用于单独验证完整端到端业务。
 
-## 推荐阅读顺序
+## 深入阅读顺序
+
+第一次学习整个项目时，先按 [项目代码学习指南](StudyGuide.md) 建立客户端、协议和服务端边界，
+再使用下面的顺序深入 IOCP 实现。
 
 1. [RemoteControlServer.h](../include/server/RemoteControlServer.h) 和
    [RemoteControlServer.cpp](../src/server/RemoteControlServer.cpp)：理解 Qt 适配层。
-2. [RemoteControlTransport.h](../include/server/RemoteControlTransport.h)：理解公开边界和 PIMPL。
-3. [RemoteControlTransportInternal.h](../src/server/RemoteControlTransportInternal.h)：先看
+2. [RemoteControlHostServices.h](../server_transport/include/RemoteControlHostServices.h)：
+   理解传输层需要哪些主机能力。
+3. [RemoteControlTransport.h](../server_transport/include/RemoteControlTransport.h)：
+   理解公开边界和 PIMPL。
+4. [RemoteControlTransportImpl.h](../server_transport/internal/RemoteControlTransportImpl.h)：先看
    `ConnectionPhase`、`ConnectionStateMachine`、`ConnectionContext`、`ConnectionRegistry` 和 `IoOperation`，
    其余 `Impl` 私有函数声明可暂时跳过。
-4. [RemoteControlTransport.cpp](../src/server/RemoteControlTransport.cpp)：依次跟踪 `start()`、`postAccept()`、
+5. [RemoteControlTransport.cpp](../server_transport/src/RemoteControlTransport.cpp)：依次跟踪 `start()`、`postAccept()`、
    `runCompletionWorker()`、`handleReceiveCompletion()` 和 `handleSendCompletion()`。
-5. [RemoteControlTransportProtocol.cpp](../src/server/RemoteControlTransportProtocol.cpp)：跟踪首包如何路由到短请求、
+6. [RemoteControlTransportProtocol.cpp](../server_transport/src/RemoteControlTransportProtocol.cpp)：跟踪首包如何路由到短请求、
    `ScreenStream` 和 `ControlStream` 长连接。
-6. [RemoteControlTransportFileTransfer.cpp](../src/server/RemoteControlTransportFileTransfer.cpp)：理解目录与下载如何按发送完成节奏分批推进。
-7. [RemoteControlTransportRuntime.cpp](../src/server/RemoteControlTransportRuntime.cpp)：理解 Winsock RAII、固定任务池、状态机和注册表实现。
-8. 最后回到 `RemoteControlTransport.cpp` 阅读 `stop()`，核对取消 I/O、排空 completion 和线程回收顺序。
+7. [RemoteControlTransportFileTransfer.cpp](../server_transport/src/RemoteControlTransportFileTransfer.cpp)：
+   理解目录与下载如何按发送完成节奏分批推进。
+8. [RemoteControlTransportRuntime.cpp](../server_transport/src/RemoteControlTransportRuntime.cpp)：
+   理解 Winsock RAII、固定任务池、状态机和注册表实现。
+9. 最后回到 `RemoteControlTransport.cpp` 阅读 `stop()`，核对取消 I/O、排空 completion 和线程回收顺序。
 
 以已经具备 C++/Qt 基础并读完客户端为前提，理解主要服务端调用链通常需要 15～25 小时；能够
 解释 IOCP 对象生命周期、并发关闭和安全停机约需 25～40 小时。托盘、UAC、注册表和 GDI 可以

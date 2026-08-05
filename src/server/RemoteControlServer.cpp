@@ -1,14 +1,17 @@
 #include "server/RemoteControlServer.h"
 
 #include "server/ScreenLockService.h"
-#include "server/RemoteControlTransport.h"
+#include "server/internal/WindowsRemoteControlHostServices.h"
+#include "RemoteControlTransport.h"
 
 #include <QCoreApplication>
 
 RemoteControlServer::RemoteControlServer(QObject* _parent)
     : QObject{_parent},
       m_screenLockService{new ScreenLockService{this}},
-      m_transport{std::make_unique<RemoteControlTransport>(this->m_screenLockService)}
+      m_hostServices{
+          std::make_unique<WindowsRemoteControlHostServices>(*this->m_screenLockService)},
+      m_transport{std::make_unique<RemoteControlTransport>(*this->m_hostServices)}
 {
     connect(QCoreApplication::instance(),
             &QCoreApplication::aboutToQuit,

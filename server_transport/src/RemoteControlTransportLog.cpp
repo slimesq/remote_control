@@ -1,11 +1,11 @@
-#include "server/RemoteControlServerLog.h"
+#include "internal/RemoteControlTransportLog.h"
 
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QLoggingCategory>
 #include <QThread>
 
-Q_LOGGING_CATEGORY(remoteControlServerLog, "remote_control.server")
+Q_LOGGING_CATEGORY(remoteControlTransportLog, "remote_control.server.transport")
 
 namespace
 {
@@ -14,7 +14,7 @@ constexpr int HexadecimalBase{16};
 
 }  // namespace
 
-void writeServerLog(ServerLogLevel _level, QString const& _event, QJsonObject const& _fields)
+void writeTransportLog(TransportLogLevel _level, QString const& _event, QJsonObject const& _fields)
 {
     QJsonObject record{_fields};
     record.insert(QStringLiteral("event"), _event);
@@ -27,17 +27,17 @@ void writeServerLog(ServerLogLevel _level, QString const& _event, QJsonObject co
     QByteArray const json{QJsonDocument{record}.toJson(QJsonDocument::Compact)};
     switch (_level)
     {
-        case ServerLogLevel::Debug:
-            qCDebug(remoteControlServerLog).noquote() << json;
+        case TransportLogLevel::Debug:
+            qCDebug(remoteControlTransportLog).noquote() << json;
             break;
-        case ServerLogLevel::Info:
-            qCInfo(remoteControlServerLog).noquote() << json;
+        case TransportLogLevel::Info:
+            qCInfo(remoteControlTransportLog).noquote() << json;
             break;
-        case ServerLogLevel::Warning:
-            qCWarning(remoteControlServerLog).noquote() << json;
+        case TransportLogLevel::Warning:
+            qCWarning(remoteControlTransportLog).noquote() << json;
             break;
-        case ServerLogLevel::Critical:
-            qCCritical(remoteControlServerLog).noquote() << json;
+        case TransportLogLevel::Critical:
+            qCCritical(remoteControlTransportLog).noquote() << json;
             break;
     }
 }

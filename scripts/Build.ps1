@@ -52,6 +52,9 @@ if ($Target -ne "all") {
 }
 $userPresetsPath = Join-Path $workspace "CMakeUserPresets.json"
 $cachePath = Join-Path $buildDir "CMakeCache.txt"
+$presetGeneratorPath = Join-Path $PSScriptRoot "Setup-CMakeUserPresets.ps1"
+$expectedPresetGeneratorFingerprint =
+    (Get-FileHash -LiteralPath $presetGeneratorPath -Algorithm SHA256).Hash
 
 if ($Action -eq "clean") {
     if (Test-Path -LiteralPath $buildDir) {
@@ -68,6 +71,11 @@ function Test-LocalPresets {
     try {
         $document = Get-Content -LiteralPath $userPresetsPath -Raw -Encoding utf8 | ConvertFrom-Json
     } catch {
+        return $false
+    }
+
+    $presetGeneratorFingerprint = $document.vendor."remote-control".generatorFingerprint
+    if ($presetGeneratorFingerprint -ne $expectedPresetGeneratorFingerprint) {
         return $false
     }
 
@@ -91,7 +99,7 @@ function Test-LocalPresets {
 
 $presetsRefreshed = $RefreshPresets -or -not (Test-LocalPresets)
 if ($presetsRefreshed) {
-    & (Join-Path $PSScriptRoot "Setup-CMakeUserPresets.ps1")
+    & $presetGeneratorPath
 }
 
 $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
@@ -145,6 +153,7 @@ if ($shouldDeploy) {
         "RemoteControlServer.exe"
         "RemoteControlSmokeTests.exe"
         "RemoteControlProtocolTests.exe"
+        "RemoteControlClientWorkerLifecycleTests.exe"
         "RemoteControlTransportLifecycleTests.exe"
         "RemoteControlConnectionStateTests.exe"
         "RemoteControlTransportResilienceTests.exe"

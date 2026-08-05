@@ -1,309 +1,292 @@
 # 项目代码学习指南
 
-本文面向希望通过本项目学习 Qt Widgets、信号槽、TCP 通信和 Windows IOCP 的开发者。
-构建与运行方式请先阅读项目 [README](../README.md)。
+本文用于安排代码阅读顺序、明确每个阶段的学习目标，并给出判断“是否真正理解”的标准。
+构建和运行参数统一查阅项目 [README](../README.md)，组件细节分别查阅
+[客户端系统架构](ClientArchitecture.md)、[IOCP 服务端系统架构](ServerArchitecture.md)和
+[远程控制协议参考](ProtocolReference.md)。
 
-本文只负责安排阅读顺序和解释跨模块难点。完整组件图放在客户端与服务端架构文档中，脚本参数
-放在 `scripts/README.md`，避免同一配置在多个文件中重复维护。
+具备 C++ 和 Qt 基础时，理解客户端主要调用链通常需要 15～25 小时；理解 IOCP 服务端主要调用链通常还需要15～25 小时。能够安全修改并发关闭和停机流程，一般需要累计投入 25～40 小时学习服务端。
 
-如果已经读完客户端，可以直接从“第四步：服务端”继续。具备 C++/Qt 基础时，理解客户端主要
-调用链通常需要 15～25 小时；理解服务端主要调用链也约需 15～25 小时。要达到能够安全修改
-IOCP 生命周期和线程同步的程度，服务端建议累计投入 25～40 小时。
+## 1. 学习方法
 
-## 1. 先看整体架构
+不要以“逐行读完”作为完成标准。每个阶段都建议完成下面四件事：
 
-项目包含客户端、服务端、测试程序和一个公共协议库：
+1. 从一个用户操作或测试入口画出主调用链。
+2. 标注链路中每个对象所属的线程和所有者。
+3. 说明异步操作的开始条件、完成条件和失败路径。
+4. 使用断点或测试验证自己的判断。
+
+第一次阅读只跟踪正常路径；第二次再补充超时、断线、过期结果和关闭流程。看到 Qt signal 时，
+需要同时确认发送者线程、接收者线程和连接类型；看到裸指针时，需要确认它是 QObject parent
+管理的对象还是非 owning 引用。
+
+## 2. 项目地图
 
 ```text
 RemoteControlClient
-    ├─ 一次性请求 ─────┐
-    ├─ 下载连接 ───────┤
-    ├─ 控制长连接 ─────┼─► RemoteControlTransport ─► completion workers / task pools
-    └─ 监控长连接 ─────┘
-
-RemoteControlProtocolTests ───────────► 独立验证 Packet 和 Protocol
-RemoteControlConnectionStateTests ───► 独立验证连接状态机和配额
-RemoteControlTransportLifecycleTests ─► 验证 IOCP 启停和资源回收
-RemoteControlTransportResilienceTests ► 注入损坏流量并执行并发请求
-RemoteControlSmokeTests ──────────────► 使用相同协议端到端验证服务端
+    ├─ OneShotRequest ───────────────► 一次性请求
+    ├─ FileDownloadWorker ──────────► 一次性下载连接
+    ├─ ScreenStreamWorker ──────────► 屏幕长连接
+    └─ ControlStreamWorker ─────────► 控制长连接
+                                      │
+                                      ▼
+RemoteControlServer ─► RemoteControl::ServerTransport ─► IOCP / task pools
 ```
 
-| 目录 | 作用 |
+| 目录 | 主要职责 |
 | --- | --- |
-| `src/common`、`include/common` | 命令、数据结构和 Packet 编解码 |
-| `src/client`、`include/client` | 界面、网络请求和远程屏幕交互 |
-| `src/server`、`include/server` | IOCP 网络状态机、任务池和 Qt/Windows 命令执行 |
-| `src/tests` | 协议、连接状态、传输韧性与端到端 smoke test |
+| `include/common`、`src/common` | 协议类型和 Packet 编解码 |
+| `include/client`、`src/client` | Qt 客户端界面、网络 facade 和 worker |
+| `include/server`、`src/server` | 服务端 Qt 生命周期和 Windows 主机能力 |
+| `server_transport` | 独立 IOCP transport target、状态机和任务池 |
+| `tests` | 协议、状态机、transport 和端到端验证 |
 
-客户端组件、线程边界和网络通道的完整关系参见
-[客户端系统架构](ClientArchitecture.md)；服务端结构参见
-[IOCP 服务端系统架构](ServerArchitecture.md)。
+`RemoteControlServer` 是唯一服务端程序；`RemoteControl::ServerTransport` 是被服务端和测试共同
+链接的静态库 target，不是第二个服务端。
 
-## 2. 推荐阅读顺序
+## 3. 分阶段阅读路线
 
-### 第一步：程序入口
+| 阶段 | 主题 | 建议投入 | 完成标志 |
+| --- | --- | ---: | --- |
+| 0 | 建立可运行基线 | 1～2 小时 | 能构建并运行 CTest |
+| 1 | 公共协议 | 2～4 小时 | 能手工说明一个 Packet 的布局 |
+| 2 | 程序入口与客户端界面 | 3～5 小时 | 能从按钮跟踪到业务接口 |
+| 3 | 客户端网络与线程 | 8～12 小时 | 能解释四种连接模型和关闭顺序 |
+| 4 | 远程屏幕交互 | 3～5 小时 | 能解释单帧在途和鼠标节流 |
+| 5 | 服务端应用边界 | 3～5 小时 | 能说明 Qt/Windows 与 IOCP 的边界 |
+| 6 | IOCP transport | 12～20 小时 | 能解释一次请求和安全停机 |
+| 7 | 测试与修改练习 | 4～8 小时 | 能用测试验证自己的修改 |
 
-- [客户端入口](../src/client/ClientMain.cpp)
-- [服务端入口](../src/server/ServerMain.cpp)
+### 阶段零：建立可运行基线
 
-重点理解：
+先完成一次 Debug 构建，并运行无系统副作用的测试：
 
-- `QApplication` 如何启动事件循环
-- `QCommandLineParser` 如何定义参数
-- 客户端如何解析服务端地址和端口参数
-- 服务端如何创建监听和系统托盘
-- `Run.ps1` 如何分别启动客户端、服务端和 smoke test
+```powershell
+.\scripts\Build.ps1
+ctest --test-dir .\build\msvc-debug --output-on-failure
+```
 
-### 第二步：客户端界面
+本阶段需要确认：
 
+- `RemoteControlClient`、`RemoteControlServer` 和各测试 target 都能生成。
+- 根目录 `compile_commands.json` 已生成，clangd 可以跳转到项目源码。
+- 知道端到端 smoke test 会操作服务端文件、屏幕和鼠标，不能把它当作普通 CTest 随意运行。
+
+### 阶段一：公共协议
+
+按下面顺序阅读：
+
+1. [Protocol.h](../include/common/Protocol.h)：命令、状态码和共享数据结构。
+2. [Packet.h](../include/common/Packet.h)：Packet 对外接口。
+3. [Packet.cpp](../src/common/Packet.cpp)：序列化、半包、粘包和错误恢复。
+4. [Protocol.cpp](../src/common/Protocol.cpp)：状态和目录条目的 payload 编解码。
+5. [ProtocolTests.cpp](../tests/ProtocolTests.cpp)：用测试确认边界行为。
+
+完成后应能回答：
+
+- TCP 为什么不能假设一次 `readyRead` 对应一个 Packet？
+- `StatusCode::Failure` 和 `StatusCode::Success` 在哪里定义、怎样编码？
+- 目录列表为什么需要一个 `hasNext == false` 的终止条目？
+- 下载的第一个响应 Packet 为什么只携带文件总长度？
+
+精确字段布局统一查阅 [远程控制协议参考](ProtocolReference.md)。
+
+### 阶段二：程序入口与客户端界面
+
+入口文件：
+
+- [ClientMain.cpp](../src/client/ClientMain.cpp)
 - [MainWindow.h](../include/client/MainWindow.h)
 - [MainWindow.cpp](../src/client/MainWindow.cpp)
 - [MainWindow.ui](../src/client/MainWindow.ui)
 
-建议重点阅读：
-
-- `setupUi()`：调用 `uic` 生成的代码，创建并配置 Qt Designer 中定义的控件
-- `wireSignals()`：建立控件与业务逻辑之间的信号槽连接
-- `populateDriveTree()`、`updateDirectoryView()`：更新树和文件表格
-- `updateActionState()`：根据连接、选择和异步请求状态更新控件可用性
-- `m_connectionTestPending`、`m_driveListPending`、`m_remotePathCommandPending`：阻止同类请求重复提交
-- `m_activeDownloadPath`：同时表示活动下载状态和正在下载的远程路径
-- `DirectoryLoadState`、`DirectoryEntriesRole`：维护目录加载状态和缓存
-
-目录状态转换：
+建议跟踪最短的“测试连接”调用链，再跟踪目录加载：
 
 ```text
-首次加载：Unloaded → Loading → Loaded
-                         └─失败→ Unloaded
-
-强制刷新：Loaded → Refreshing → Loaded
-                         └─失败→ Loaded（保留旧缓存）
+QApplication::exec()
+  → 用户触发 QAction / QPushButton
+  → MainWindow slot
+  → RemoteClient 业务接口
+  → 结果 signal
+  → MainWindow 更新状态和控件
 ```
 
-### 第三步：客户端网络层
-
-- [RemoteClient.h](../include/client/RemoteClient.h)
-- [RemoteClient.cpp](../src/client/RemoteClient.cpp)
-- [FileDownloadWorker.cpp](../src/client/FileDownloadWorker.cpp)
-- [ScreenStreamWorker.cpp](../src/client/ScreenStreamWorker.cpp)
-- [ControlStreamWorker.cpp](../src/client/ControlStreamWorker.cpp)
-
-普通轻量命令使用短连接：
+重点理解 `setupUi()`、`wireSignals()`、`updateActionState()` 和目录树的
+`DirectoryLoadState`。目录状态按下面的方向变化：
 
 ```text
-用户操作
-  → MainWindow 调用 RemoteClient
-  → OneShotRequest 建立 TCP 连接并发送 Packet
-  → 解析服务端响应
-  → RemoteClient 发出业务信号
-  → MainWindow 更新界面
+Unloaded → Loading → Loaded
+              └─失败→ Unloaded
+
+Loaded → Refreshing → Loaded
+              └─失败→ Loaded（保留旧缓存）
 ```
 
-可以先跟踪 `testConnection()`，它的数据最少、调用链最短。`OneShotRequest` 属于
-`RemoteClient` 所在的 GUI 线程，但 `QTcpSocket` 使用事件循环异步收发，因此不会同步阻塞
-界面。每个 `OneShotRequest` 实例只处理一次逻辑请求；目录列表虽然可能返回多个数据包，
-仍然属于同一次请求。
+完成标志：能够说明 `QTreeWidgetItem` 中保存的远程路径、加载状态和目录缓存分别由谁写入、
+何时失效，以及为什么同类 pending 状态通常只在 GUI 线程访问而不需要加锁。
 
-`requestDriveList()`、`requestDirectoryListing()`、`openRemoteFile()` 和 `deleteRemotePath()` 复用同一个
-`OneShotRequest` 模型。其中目录请求的服务端响应由多个 `FileEntry` 包和一个
-`hasNext == false` 的终止包组成。
+### 阶段三：客户端网络与线程
 
-`OneShotRequest::onReadyRead()` 将 `QTcpSocket::readAll()` 返回的新数据追加到持久缓冲区，
-再循环调用 `Packet::tryParse()`。完整数据包会立即分派处理；不完整数据会留在缓冲区，
-等待下一次 `readyRead()`，从而同时处理 TCP 拆包、粘包和目录多包响应。每次连接成功或
-收到新数据都会重新启动 15 秒无活动超时，请求完成时停止计时器。
+先阅读 [客户端系统架构](ClientArchitecture.md)，再按下面顺序进入代码：
 
-#### 为什么 `OneShotRequest` 需要 `CallbackScope`
+1. [RemoteClient.h](../include/client/RemoteClient.h)：对 GUI 暴露的业务接口和线程成员。
+2. [RemoteClient.cpp](../src/client/RemoteClient.cpp)：构造、析构、`OneShotRequest` 和结果转发。
+3. [FileDownloadWorker.cpp](../src/client/FileDownloadWorker.cpp)：流式下载和 `QSaveFile`。
+4. [ScreenStreamWorker.cpp](../src/client/ScreenStreamWorker.cpp)：屏幕长连接和单帧在途。
+5. [ControlStreamWorker.cpp](../src/client/ControlStreamWorker.cpp)：控制握手、顺序队列和移动合并。
 
-`OneShotRequest`、`RemoteClient` 和 `MainWindow` 位于同一个 GUI 线程，因此默认的
-`Qt::AutoConnection` 会采用直接连接：`OneShotRequest` 发出结果信号时，会同步执行
-`MainWindow::wireSignals()` 中对应的 lambda。部分 lambda 会调用
-`QMessageBox::information()` 或 `QMessageBox::warning()`；这些模态函数在消息框关闭前
-会运行一个嵌套 GUI 事件循环。
+从 `RemoteClient::testConnection()` 开始跟踪 `OneShotRequest`。它和 GUI 位于同一线程，但
+`QTcpSocket` 由事件循环异步驱动，因此等待网络时不会同步阻塞界面。目录请求虽然返回多个
+Packet，仍然属于一个逻辑请求和一个 `OneShotRequest`。
 
-另一方面，服务端会在一次性请求的响应发送完成后主动断开连接。因此响应数据和 TCP 断开
-事件可能相继到达，产生下面的回调重入：
+三个常驻 worker 分别属于屏幕、控制和下载线程。GUI 使用
+`QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务；`RemoteClient` 析构时先使用
+`Qt::BlockingQueuedConnection` 让 worker 在所属线程执行 `shutdown()`，然后对线程调用
+`quit()` 和 `wait()`。顺序不能颠倒，否则 worker 可能失去处理清理任务的事件循环。
+
+下载需要同时检查 endpoint generation 和 download generation：前者淘汰旧服务器的结果，
+后者区分同一服务器上的前后两次下载或取消。endpoint 改变时两者都会递增；新下载开始时只
+递增 download generation。取消通过中止下载 socket 实现，不会向服务端发送额外命令。
+
+#### 重点案例：为什么需要 `CallbackScope`
+
+`OneShotRequest` 发出结果 signal 时，同线程 GUI slot 默认会被同步调用。某些 slot 会显示模态
+`QMessageBox`，从而启动嵌套事件循环；服务端的 TCP 断开事件可能在外层回调返回前被处理：
 
 ```text
 OneShotRequest::onReadyRead()
-  → 解析响应并标记请求完成
-  → emit connectionTested(...) 等结果信号
-  → MainWindow 的直接连接 lambda
-  → QMessageBox 打开模态对话框并运行嵌套事件循环
-  → 嵌套事件循环处理服务端发来的 disconnected 事件
+  → emit 结果 signal
+  → GUI slot 打开 QMessageBox
+  → 嵌套事件循环处理 disconnected
   → OneShotRequest::onDisconnected()
   → requestDeletion()
 ```
 
-此时外层 `onReadyRead()` 仍停留在调用栈中。如果 `requestDeletion()` 立即调用
-`deleteLater()`，嵌套事件循环可能在消息框关闭前处理 `DeferredDelete` 事件；消息框关闭
-后，外层 `onReadyRead()` 将恢复执行并继续访问已经销毁的 `OneShotRequest`。这里主要防止
-的是回调期间的提前销毁和 use-after-free，而不只是重复删除。
+如果嵌套事件循环立即处理 `deleteLater()`，外层 `onReadyRead()` 恢复后可能访问已经销毁的对象。
+`CallbackScope` 因此只放在真正的 Qt 事件入口，记录当前仍在调用栈中的回调层数；清理请求先进入
+`CleanupDeferred`，最外层回调退出后才进入 `DeletionScheduled`。它防止的是回调期间提前销毁，
+不是要求每个普通 slot 都使用相同保护。
 
-`CallbackScope` 只创建在 `OneShotRequest` 的 Qt 事件入口中：定时器 `timeout` 回调以及
-`onConnected()`、`onReadyRead()`、`onDisconnected()`、`onErrorOccurred()`。构造时增加
-`m_callbackDepth`，析构时减少它。`requestDeletion()` 在回调仍活动时把状态改为
-`RequestState::CleanupDeferred`；最外层 `CallbackScope` 退出后再切换到
-`RequestState::DeletionScheduled` 并调用一次 `deleteLater()`。
+完成后应能回答：
 
-```text
-Active
-  → Finished
-  → CleanupDeferred      （仍有 Qt 回调处于调用栈中）
-  → DeletionScheduled    （最外层 Qt 回调已经退出）
-```
+- 一次性请求、下载、屏幕流和控制流为什么使用不同连接模型？
+- worker 为什么必须在所属线程创建和操作 `QTcpSocket`？
+- endpoint、download、screen stream 和 control stream generation 分别淘汰哪些旧结果？
+- 为什么下载结果需要同时匹配 endpoint generation 与 download generation？
+- `quit()`、`wait()`、worker `shutdown()` 分别负责什么？
 
-这个保护针对的是会自行清理的 `OneShotRequest`，不是要求项目中每个普通 slot 都创建
-`CallbackScope`。
+### 阶段四：远程屏幕交互
 
-三个 generation 分别管理不同范围的过期结果：
+按职责而不是文件大小阅读：
 
-- `m_endpointGeneration`：地址或端口变化后，丢弃旧 endpoint 的一次性请求结果。
-- `m_screenStreamGeneration`：停止监控后，丢弃旧监控会话返回的帧、错误和完成通知。
-- `m_controlStreamGeneration`：停止控制后，丢弃旧控制会话返回的命令结果。
-
-它们不会互相比较。endpoint 改变时，`setEndpoint()` 会分别让一次性请求、监控会话和
-控制会话失效。
-
-远程屏幕使用独立工作线程和持久连接：
+- [RemoteScreenWindow.cpp](../src/client/RemoteScreenWindow.cpp)：窗口生命周期和 30 FPS 上限调度。
+- [RemoteScreenWidget.cpp](../src/client/RemoteScreenWidget.cpp)：绘制、坐标映射和鼠标移动节流。
+- [ScreenStreamWorker.cpp](../src/client/ScreenStreamWorker.cpp)：帧请求、解码和持久连接。
+- [ControlStreamWorker.cpp](../src/client/ControlStreamWorker.cpp)：鼠标与锁定命令通道。
 
 ```text
-RemoteScreenWindow 立即请求首帧
-  → RemoteClient 将任务投递给 ScreenStreamWorker
-  → 工作线程复用 QTcpSocket 发送 WatchScreen Packet
-  → 工作线程接收并解码 PNG
-  → GUI 线程接收 QImage 并刷新画面
-  → RemoteScreenWindow 按最高约 30 FPS 调度下一帧
+请求一帧 → worker 发送 WatchScreen → 收到并解码 PNG → GUI 更新画面
+       ▲                                             │
+       └──────── 补足 33 ms 周期后请求下一帧 ────────┘
 ```
 
-同一时刻只允许一帧处于请求中。上一帧完成后，窗口根据 33 ms 的目标周期补足剩余等待时间，
-因此实际帧率取 30 FPS 上限与截图、编码、网络和解码能力中的较低值。连接模型、generation 和
-`m_screenFramePending` 的职责参见 [客户端系统架构](ClientArchitecture.md)。
+同一时刻只允许一帧在途；实际帧率是 30 FPS 上限与截图、编码、网络、解码能力中的较低值。
+鼠标移动按固定间隔只发送最新位置，按下、释放和双击不参与合并。
 
-`RemoteClient` 启动三个常驻工作线程，分别承载 `ScreenStreamWorker`、
-`ControlStreamWorker` 和 `FileDownloadWorker`。GUI 线程通过
-`QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务，析构时使用
-`Qt::BlockingQueuedConnection` 先让 worker 停止，再退出并等待线程。
+完成标志：能够说明 widget 坐标如何映射到远程图像坐标，以及屏幕数据和鼠标命令为什么使用
+两条独立长连接。
 
-鼠标、模拟锁定和解锁使用单独的 `ControlStreamWorker` 长连接。控制命令一次只发送
-一个并等待状态响应，连续鼠标移动只保留队列中最新的位置，防止输入积压。下载使用
-`FileDownloadWorker` 在线程中接收数据并写入 `QSaveFile`；服务端每次最多读取 64 KiB 并
-异步发送，不会把整个文件保存在内存中。每个发送批次完成后，IOCP completion worker 才把
-下一次读取投递回文件任务池，因此慢客户端不会让文件 worker 阻塞等待网络。
+### 阶段五：服务端应用边界
 
-### 第四步：服务端
+先暂时忽略 IOCP 内部实现，阅读：
 
-先只阅读核心网络路径：
+1. [ServerMain.cpp](../src/server/ServerMain.cpp)：命令行模式和 QApplication 生命周期。
+2. [RemoteControlServer.cpp](../src/server/RemoteControlServer.cpp)：创建 host services 和 transport。
+3. [RemoteControlHostServices.h](../server_transport/include/RemoteControlHostServices.h)：transport 所需的主机能力接口。
+4. [WindowsRemoteControlHostServices.cpp](../src/server/WindowsRemoteControlHostServices.cpp)：Qt/Windows 适配器。
+5. [ScreenLockService.cpp](../src/server/ScreenLockService.cpp) 和
+   [WindowsPlatformIntegration.cpp](../src/server/WindowsPlatformIntegration.cpp)：外围系统能力。
 
-- [RemoteControlServer.cpp](../src/server/RemoteControlServer.cpp)：Qt 应用层适配器
-- [RemoteControlTransport.h](../include/server/RemoteControlTransport.h)：公开的 PIMPL 边界
-- [RemoteControlTransportInternal.h](../src/server/RemoteControlTransportInternal.h)：连接状态与 I/O 对象
-- [RemoteControlTransport.cpp](../src/server/RemoteControlTransport.cpp)：IOCP 启停和收发完成通知
-- [RemoteControlTransportProtocol.cpp](../src/server/RemoteControlTransportProtocol.cpp)：首包分类和命令路由
-- [RemoteControlTransportFileTransfer.cpp](../src/server/RemoteControlTransportFileTransfer.cpp)：目录和下载的分批推进
-- [RemoteControlTransportRuntime.cpp](../src/server/RemoteControlTransportRuntime.cpp)：任务池、注册表和状态机实现
+这里需要建立清晰边界：IOCP target 负责连接和协议推进；`RemoteControlHostServices` 提供文件、
+屏幕、鼠标和锁定能力；需要操作 Qt GUI 对象的锁定请求会被投递回 GUI 线程。
 
-托盘、UAC、注册表、模拟锁屏和 GDI 截图属于外围 Windows 集成，理解核心 IOCP 链路后再阅读
-`ServerTrayController`、`ScreenLockService` 和 `WindowsPlatformIntegration`。
+项目中的“锁定”是应用级模拟锁定，不是 Windows 会话锁定，也不是安全边界。托盘、UAC、启动项
+和 GDI 截图属于外围能力，应放在核心 transport 之后学习。
 
-服务端主调用链：
+### 阶段六：IOCP transport
+
+先阅读 [IOCP 服务端系统架构](ServerArchitecture.md)，然后分三遍阅读实现。
+
+第一遍只看类型和所有权：
+
+- [RemoteControlTransport.h](../server_transport/include/RemoteControlTransport.h)
+- [RemoteControlTransportImpl.h](../server_transport/internal/RemoteControlTransportImpl.h) 中的
+  `ConnectionPhase`、`ConnectionStateMachine`、`ConnectionContext`、`ConnectionRegistry` 和
+  `IoOperation`
+
+第二遍跟踪一条 `TestConnection`：
 
 ```text
-RemoteControlServer 启动 RemoteControlTransport
-  → RemoteControlTransport 预投递 AcceptEx
-  → Windows 内核完成 accept/recv/send 并把通知放入 completion port
-  → IOCP completion worker 接收完成通知并解析 Packet
-  → 网络状态机路由命令，阻塞任务投递到固定任务池
-  → completion worker 按连接顺序异步发送响应
+start()
+  → postAccept()
+  → handleAcceptCompletion()
+  → postReceive()
+  → handleReceiveCompletion()
+  → handleInitialPacket()
+  → enqueuePacket()
+  → handleSendCompletion()
+  → closeConnection()
 ```
 
-阅读时持续验证三个核心不变量：每条连接最多一个接收和一个发送在途；每次成功投递的
-`OVERLAPPED` 最终恰好产生一次计数回收；只有赢得 `Closing` 转换的线程关闭 socket。目录和
-下载通过 `FileTransferState` 在发送完成后分批续传，任务线程不会等待网络。
+对应实现主要位于：
 
-详细的线程数量、连接阶段、容量、背压、超时和停机顺序统一记录在
-[IOCP 服务端系统架构](ServerArchitecture.md)。
+- [RemoteControlTransport.cpp](../server_transport/src/RemoteControlTransport.cpp)
+- [RemoteControlTransportProtocol.cpp](../server_transport/src/RemoteControlTransportProtocol.cpp)
 
-这里的“锁定”不是 Windows 会话锁定。`ScreenLockWindow` 显示全屏覆盖窗口，
-`WindowsPlatformIntegration` 隐藏任务栏并限制鼠标，`Ctrl+C` 可用于紧急解锁。该快捷键发出
-`unlockRequested()`，再由 `ScreenLockService` 统一停止测试计时器、解锁并发布状态变化。因此它
-适合演示远程控制流程，但不能作为操作系统安全边界。
+第三遍再阅读阻塞任务和关闭流程：
 
-### 第五步：公共协议
+- [RemoteControlTransportFileTransfer.cpp](../server_transport/src/RemoteControlTransportFileTransfer.cpp)
+- [RemoteControlTransportRuntime.cpp](../server_transport/src/RemoteControlTransportRuntime.cpp)
+- [RemoteControlTransportLog.cpp](../server_transport/src/RemoteControlTransportLog.cpp)
+- `RemoteControlTransport::stop()`
 
-依次阅读 [Protocol.h](../include/common/Protocol.h)、[Protocol.cpp](../src/common/Protocol.cpp)、
-[Packet.h](../include/common/Packet.h)、[Packet.cpp](../src/common/Packet.cpp) 和
-[ProtocolTestMain.cpp](../src/tests/ProtocolTestMain.cpp)。重点理解 little-endian Packet 布局、
-半包/粘包处理、状态 payload、目录终止条目以及不同命令允许出现的连接阶段。
+阅读过程中始终验证三个不变量：
 
-字段布局、命令表和修改检查清单统一记录在
-[远程控制协议参考](ProtocolReference.md)，不在学习路线中重复维护。
+1. 每条活动连接最多一个 `WSARecv` 和一个 `WSASend` 在途。
+2. 每个成功投递的 `OVERLAPPED` 最终恰好产生一次 pending 计数回收。
+3. 只有赢得 `Closing` 状态转换的线程移除注册表条目并关闭 socket。
 
-### 第六步：远程屏幕交互
+完成标志：能够解释 `IoOperation` 为什么持有连接 `shared_ptr`、阻塞工作为什么进入固定任务池、
+慢客户端下载为什么不会阻塞文件 worker，以及服务端为何必须排空 completion 后才能销毁 IOCP。
 
-- [RemoteScreenWindow.h](../include/client/RemoteScreenWindow.h)
-- [RemoteScreenWindow.cpp](../src/client/RemoteScreenWindow.cpp)
-- [RemoteScreenWindow.ui](../src/client/RemoteScreenWindow.ui)
-- [ControlStreamWorker.cpp](../src/client/ControlStreamWorker.cpp)
-- [ScreenStreamWorker.cpp](../src/client/ScreenStreamWorker.cpp)
-- [RemoteControlTransport.cpp](../src/server/RemoteControlTransport.cpp)
-- [ScreenLockWindow.cpp](../src/server/ScreenLockWindow.cpp)
+### 阶段七：用测试验证理解
 
-这一部分适合学习：
+推荐按由小到大的顺序阅读：
 
-- 自定义 `QWidget` 绘制
-- 鼠标事件坐标转换
-- `QTimer` 合并高频事件
-- `QThread`、queued signal/slot 和对象线程归属
-- 持久 TCP 连接与单帧流量控制
-- 独立屏幕通道与控制通道，避免 head-of-line blocking
-- 截图数据在网络中的传输与显示
+1. [ProtocolTests.cpp](../tests/ProtocolTests.cpp)：Packet 和 payload 边界。
+2. [ClientWorkerLifecycleTests.cpp](../tests/ClientWorkerLifecycleTests.cpp)：下载取消、替换隔离和 worker 回收。
+3. [ConnectionStateMachineTests.cpp](../tests/ConnectionStateMachineTests.cpp)：状态转换与配额。
+4. [TransportLifecycleTests.cpp](../tests/TransportLifecycleTests.cpp)：启动、停止和资源回收。
+5. [TransportResilienceTests.cpp](../tests/TransportResilienceTests.cpp)：损坏流量和并发隔离。
+6. [SmokeTests.cpp](../tests/SmokeTests.cpp)：完整客户端到服务端业务。
 
-### 第七步：用测试验证理解
+前五项由 CTest 自动运行，不会执行鼠标、锁定、删除或文件运行。`RemoteControlSmokeTests` 会产生
+真实系统影响，只应连接受控环境。
 
-推荐按下面顺序阅读和运行测试：
+## 4. 建议练习
 
-1. `RemoteControlProtocolTests`：先验证 Packet、状态 payload 和目录条目编码。
-2. `RemoteControlConnectionStateTests`：观察单向状态转换、并发关闭和连接配额。
-3. `RemoteControlTransportLifecycleTests`：观察连接到达期间的停止、I/O 取消和线程回收。
-4. `RemoteControlTransportResilienceTests`：观察损坏流量、半包断开和并发请求隔离。
-5. `RemoteControlSmokeTests`：最后连接完整服务端，验证所有业务路径。
+1. 为“测试连接”调用链画出对象、线程和 signal/slot 关系。
+2. 给同一条服务端连接按 `connection_id` 整理 accept、recv、send 和 close 日志。
+3. 新增一个无系统副作用的命令，例如返回服务端版本，并同步更新协议测试和文档。
+4. 为连接状态机补充一个非法转换或并发关闭测试。
+5. 测量远程画面中截图、PNG 编码、网络、解码和帧调度各自的耗时。
+6. 解释 `stop()` 中任意两步交换顺序可能造成的资源生命周期问题。
 
-前四个测试可直接通过 CTest 运行，不会操作鼠标、锁屏或文件；smoke test 会产生真实系统影响，
-只应连接受控测试环境。
+## 5. 调试检查清单
 
-## 3. Qt 知识点索引
-
-| 知识点 | 项目中的示例 |
-| --- | --- |
-| GUI 事件循环 | `QApplication` |
-| Qt Designer | `MainWindow.ui`、`RemoteScreenWindow.ui`、`ScreenLockWindow.ui` |
-| 信号槽 | `MainWindow::wireSignals()`、`RemoteClient` |
-| TCP 客户端 | `QTcpSocket` |
-| Windows 异步服务端 | IOCP、`AcceptEx`、`WSARecv`、`WSASend` |
-| 对象生命周期 | `QObject` parent、`std::unique_ptr` |
-| 工作线程 | `QThread`、worker object、queued/blocking queued connection |
-| 定时任务 | `QTimer` |
-| 文件系统 | `QFile`、`QDir`、`QFileInfo`、`QSaveFile` |
-| 图片与绘制 | `QImage`、`QPainter`、Windows GDI |
-| 系统集成 | `QSystemTrayIcon`、`QSettings`、Windows API |
-| CMake Qt 集成 | `AUTOMOC`、`AUTOUIC`、Qt target linking |
-
-## 4. 建议的学习练习
-
-1. 从“测试连接”按钮开始，为调用链逐步加断点。
-2. 在 `handleInitialPacket()`、`handleReceiveCompletion()` 和 `handleSendCompletion()` 设置断点，
-   跟踪同一 `connection_id` 的完整生命周期。
-3. 新增一个不修改系统状态的协议命令，例如返回服务端版本信息。
-4. 阅读连接状态测试，再补充“关闭与分类竞争”的测试场景。
-5. 观察远程屏幕刷新频率，分析截图、PNG 编码、网络和客户端调度各自的耗时。
-
-## 5. 调试建议
-
-- 客户端和服务端分别启动调试时，确认端口一致。
-- 遇到 Qt 类型跳转失败，先确认项目根目录的 `compile_commands.json` 存在且来自当前构建
-  目录，再重启 `clangd`。
-- 遇到 `ui_*.h` 缺失，先完成一次构建；这些头文件由 `AUTOUIC` 生成。
-- 修改 `Q_OBJECT` 类后出现链接错误时，检查头文件是否包含在 CMake target 中，并重新运行 configure。
-- 修改公共协议或 IOCP 生命周期后先运行完整 CTest；涉及实际业务行为时，再启动服务端运行
-  `RemoteControlSmokeTests`。
+- 客户端和服务端端口必须一致，服务端端口也不能被其他进程占用。
+- clangd 跳转异常时，确认根目录 `compile_commands.json` 来自当前构建目录，再重启 clangd。
+- `ui_*.h` 由 AUTOUIC 生成；缺失时先重新 configure 和 build。
+- 修改带 `Q_OBJECT` 的类后出现链接错误时，确认头文件已列入对应 CMake target。
+- 跨线程 signal/slot 行为异常时，先确认对象的 thread affinity 和实际连接类型。
+- 修改协议、连接状态或关闭流程后先运行完整 CTest，再在受控环境运行 smoke test。
