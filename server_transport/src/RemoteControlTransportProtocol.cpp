@@ -274,7 +274,7 @@ bool RemoteControlTransport::Impl::scheduleOpenFile(
         remote_control::Packet const response{
             makeStatusPacket(remote_control::Command::RunFile,
                              success,
-                             success ? QObject::tr("Open file completed.")
+                             success ? QObject::tr("Open request accepted.")
                                      : QObject::tr("Failed to open file: %1").arg(path))};
         this->sendFinalPacket(connection, response);
     });

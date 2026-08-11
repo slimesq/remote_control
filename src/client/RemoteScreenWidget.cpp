@@ -45,6 +45,12 @@ void RemoteScreenWidget::setImage(QImage const& _image)
     update();
 }
 
+void RemoteScreenWidget::cancelPendingMouseMove()
+{
+    this->m_moveEventTimer->stop();
+    this->m_hasPendingMoveEvent = false;
+}
+
 void RemoteScreenWidget::paintEvent(QPaintEvent* _event)
 {
     static_cast<void>(_event);
@@ -58,6 +64,8 @@ void RemoteScreenWidget::paintEvent(QPaintEvent* _event)
 
 void RemoteScreenWidget::mouseDoubleClickEvent(QMouseEvent* _event)
 {
+    // Preserve input order by delivering the latest position before the button transition.
+    this->flushPendingMoveEvent();
     emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::DoubleClick,
                                                 this->toProtocolButton(_event->button()),
                                                 mouseEventPosition(_event)));
@@ -66,6 +74,8 @@ void RemoteScreenWidget::mouseDoubleClickEvent(QMouseEvent* _event)
 
 void RemoteScreenWidget::mousePressEvent(QMouseEvent* _event)
 {
+    // Preserve input order by delivering the latest position before the button transition.
+    this->flushPendingMoveEvent();
     emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::Press,
                                                 this->toProtocolButton(_event->button()),
                                                 mouseEventPosition(_event)));
@@ -74,6 +84,8 @@ void RemoteScreenWidget::mousePressEvent(QMouseEvent* _event)
 
 void RemoteScreenWidget::mouseReleaseEvent(QMouseEvent* _event)
 {
+    // Preserve input order by delivering the latest position before the button transition.
+    this->flushPendingMoveEvent();
     emit mouseEventCreated(this->makeMouseEvent(remote_control::MouseAction::Release,
                                                 this->toProtocolButton(_event->button()),
                                                 mouseEventPosition(_event)));
@@ -96,6 +108,8 @@ void RemoteScreenWidget::mouseMoveEvent(QMouseEvent* _event)
 
 void RemoteScreenWidget::flushPendingMoveEvent()
 {
+    // Explicit flushes must cancel the scheduled timeout so it cannot run after a later event.
+    this->m_moveEventTimer->stop();
     if (!this->m_hasPendingMoveEvent)
     {
         return;

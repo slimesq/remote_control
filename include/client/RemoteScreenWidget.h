@@ -27,6 +27,11 @@ public:
      */
     void setImage(QImage const& _image);
 
+    /**
+     * @brief Stops mouse-move delivery and discards the latest unsent cursor position.
+     */
+    void cancelPendingMouseMove();
+
 signals:
     /**
      * @brief Reports a mouse event mapped to remote coordinates.
@@ -66,7 +71,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* _event) override;
 
 private:
-    /** @brief Sends the most recently queued mouse move. */
+    /** @brief Sends the most recently queued mouse move and cancels its timer callback. */
     void flushPendingMoveEvent();
 
     /**

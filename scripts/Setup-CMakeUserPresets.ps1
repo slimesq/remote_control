@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 为当前计算机生成 CMakeUserPresets.json。
 

@@ -104,14 +104,29 @@ flowchart LR
 | --- | --- | --- |
 | `RemoteClient` | `MainWindow` 的 QObject parent 关系 | 随主窗口销毁 |
 | `OneShotRequest` | 以 `RemoteClient` 为 parent 自管理 | 回调完全退出后 `deleteLater()` |
-| 三个 `QThread` | `RemoteClient` | 析构中 `quit()` 后 `wait()` |
+| 三个 `QThread` | `RemoteClient` | 析构中由 worker 收尾回调执行 `quit()`，随后由调用线程 `wait()` |
 | 三个 worker | 创建后 `moveToThread()` | 对应线程发出 `finished` 后 `deleteLater()` |
 | `RemoteScreenWindow` | `MainWindow` 按需创建并作为 parent | 关闭时停止两条流并保留窗口，随主窗口销毁 |
 | `RemoteScreenWidget` | `RemoteScreenWindow` 创建，screen container 作为 parent | 随远程屏幕窗口销毁 |
 
-`RemoteClient` 析构时，先使用 `Qt::BlockingQueuedConnection` 让 worker 在自己的线程中执行
-`shutdown()`，然后退出并等待线程。顺序不能颠倒：先停止事件循环会让 worker 无法处理清理任务，
-直接从 GUI 线程调用 `shutdown()` 又会违反 socket 的线程归属。
+`RemoteClient` 析构时，通过 `Qt::QueuedConnection` 为每个 worker 投递一个收尾回调。该回调在
+worker 自己的线程中先执行 `shutdown()`，再退出当前线程的事件循环；析构线程只负责 `wait()`。
+把清理和 `quit()` 放在同一个队列回调中，既保证 socket 等资源仍由所属线程释放，也避免两段式
+阻塞关闭之间的时序窗口。
+
+关闭远程屏幕窗口时，窗口先停止帧调度，再让 `RemoteScreenWidget` 停止鼠标移动定时器并丢弃
+尚未发送的位置，最后关闭屏幕流和控制流。这个顺序可以防止窗口关闭后，延迟的鼠标移动再次调用
+`RemoteClient::sendMouseEvent()` 并重新建立控制连接。
+
+## 鼠标事件顺序与节流
+
+`RemoteScreenWidget` 将高频移动事件限制为约每 16 ms 发送一次，并且只保留定时窗口内最新的
+鼠标位置。按下、释放和双击属于不可合并的离散事件；发送这些事件前，widget 会立即刷新尚未
+发送的移动事件并停止对应定时器，因此控制线程接收到的顺序仍然是“移动到目标位置，再执行
+按键动作”，也不会由旧的定时回调重复发送该位置。
+
+`ControlStreamWorker` 还会合并队列中相邻的纯移动命令，但不会跨越按下、释放、双击、锁定或
+解锁等有顺序含义的命令。这两层处理分别控制 GUI 事件产生速率和网络队列积压。
 
 ## 结果有效性
 

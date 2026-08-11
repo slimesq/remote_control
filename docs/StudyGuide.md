@@ -1,11 +1,14 @@
 # 项目代码学习指南
 
 本文用于安排代码阅读顺序、明确每个阶段的学习目标，并给出判断“是否真正理解”的标准。
-构建和运行参数统一查阅项目 [README](../README.md)，组件细节分别查阅
+开始逐段阅读代码前，可以先通过[项目功能与技术实现](FeaturesAndDesign.md)建立功能视角。构建和
+运行参数统一查阅项目 [README](../README.md)，组件细节分别查阅
 [客户端系统架构](ClientArchitecture.md)、[IOCP 服务端系统架构](ServerArchitecture.md)和
 [远程控制协议参考](ProtocolReference.md)。
 
-具备 C++ 和 Qt 基础时，理解客户端主要调用链通常需要 15～25 小时；理解 IOCP 服务端主要调用链通常还需要15～25 小时。能够安全修改并发关闭和停机流程，一般需要累计投入 25～40 小时学习服务端。
+具备 C++ 和 Qt 基础时，只理解客户端主要调用链通常需要 15～25 小时，理解 IOCP 服务端主要调用链
+通常还需要 15～25 小时。完成下表的全部阅读和练习约需 36～61 小时；若要安全修改并发关闭和停机
+流程，通常需要在服务端部分累计投入 25～40 小时。
 
 ## 1. 学习方法
 
@@ -137,12 +140,13 @@ Loaded → Refreshing → Loaded
 
 从 `RemoteClient::testConnection()` 开始跟踪 `OneShotRequest`。它和 GUI 位于同一线程，但
 `QTcpSocket` 由事件循环异步驱动，因此等待网络时不会同步阻塞界面。目录请求虽然返回多个
-Packet，仍然属于一个逻辑请求和一个 `OneShotRequest`。
+Packet，仍然属于一个逻辑请求和一个 `OneShotRequest`。Packet 解析和目录条目累计也在 GUI
+回调中执行，因此“异步网络”只表示不阻塞等待，并不代表所有 CPU 处理都在工作线程。
 
 三个常驻 worker 分别属于屏幕、控制和下载线程。GUI 使用
-`QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务；`RemoteClient` 析构时先使用
-`Qt::BlockingQueuedConnection` 让 worker 在所属线程执行 `shutdown()`，然后对线程调用
-`quit()` 和 `wait()`。顺序不能颠倒，否则 worker 可能失去处理清理任务的事件循环。
+`QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 投递任务；`RemoteClient` 析构时也向每个
+worker 投递收尾回调，由该回调在所属线程中依次执行 `shutdown()` 和 `quit()`，析构线程再调用
+`wait()`。同一个回调明确保证清理先于退出，并避免把停机拆成两段相互等待的阻塞操作。
 
 下载需要同时检查 endpoint generation 和 download generation：前者淘汰旧服务器的结果，
 后者区分同一服务器上的前后两次下载或取消。endpoint 改变时两者都会递增；新下载开始时只
@@ -191,7 +195,8 @@ OneShotRequest::onReadyRead()
 ```
 
 同一时刻只允许一帧在途；实际帧率是 30 FPS 上限与截图、编码、网络、解码能力中的较低值。
-鼠标移动按固定间隔只发送最新位置，按下、释放和双击不参与合并。
+鼠标移动按固定间隔只发送最新位置；离散鼠标事件发出前先刷新待发送移动，关闭监控窗口时则丢弃
+尚未发送的移动，避免打乱输入顺序或重新打开已停止的控制连接。
 
 完成标志：能够说明 widget 坐标如何映射到远程图像坐标，以及屏幕数据和鼠标命令为什么使用
 两条独立长连接。

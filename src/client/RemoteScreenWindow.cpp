@@ -68,6 +68,8 @@ void RemoteScreenWindow::closeEvent(QCloseEvent* _event)
 {
     this->m_frameRequestTimer->stop();
     this->m_frameRequestElapsed.invalidate();
+    // Discard a throttled move before closing the control stream so its timer cannot reopen it.
+    this->m_screenWidget->cancelPendingMouseMove();
     this->m_client->stopScreenStream();
     this->m_client->stopControlStream();
     QDialog::closeEvent(_event);

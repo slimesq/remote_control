@@ -32,7 +32,7 @@ enum class Command : quint16
 enum class StatusCode : quint8
 {
     Failure = 0,  ///< The command failed.
-    Success = 1,  ///< The command completed successfully.
+    Success = 1,  ///< The command-specific success condition was met.
 };
 
 /** @brief Mouse actions that can be forwarded to the remote host. */

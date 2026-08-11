@@ -76,6 +76,11 @@ completion worker 数量根据硬件并发度限制在 2～4 个；它们由所�
 频繁创建和销毁线程。命令池固定为 2 个 worker，文件池固定为 4 个 worker，截图池固定为
 2 个 worker，避免 shell、慢磁盘或 PNG 编码占满 IOCP worker。
 
+截图池可以同时承载多个连接的任务，但全局 `m_screenFrameCacheMutex` 覆盖缓存检查、GDI 截图、
+PNG 编码和 Packet 序列化。因此两个截图 worker 不会同时执行 GDI 捕获；等待者会在前一帧完成后
+优先复用有效的序列化缓存。这里的两个 worker 用于承载跨连接任务和衔接缓存复用，不代表两次截图
+可以真正并行。
+
 ## 一条连接的 I/O 流程
 
 ```text
@@ -110,7 +115,7 @@ AwaitingRequest ──► OneShot / FileTransfer / ScreenStream / ControlStream
 
 | 角色 | 命令 | 生命周期 |
 | --- | --- | --- |
-| `OneShot` | `TestConnection`、`ListDrives`、`RunFile` | 返回一个状态或磁盘列表后关闭 |
+| `OneShot` | `TestConnection`、`ListDrives`、`RunFile` | 返回单个响应（空测试回包、磁盘列表或状态）后关闭 |
 | `FileTransfer` | `ListDirectory`、`DownloadFile`、`DeleteFile` | 返回目录序列、文件长度与数据或状态后关闭 |
 | `ScreenStream` | `WatchScreen` | 持久连接；一帧在途，并可合并一个提前到达的下一帧请求 |
 | `ControlStream` | `ControlChannel` 握手、鼠标、模拟锁定和解锁 | 持久连接；命令按到达顺序响应 |
@@ -162,11 +167,13 @@ worker 复用 GDI DIB 和 memory DC，并在 DIB 有效期内
 RemoteControlServer::shutdownTransport()
   → RemoteControlTransport::stop() 禁止接收新任务
   → 关闭监听 socket 和活动连接，取消待完成 I/O
-  → 请求取消任务线程中的同步 I/O，再停止命令池、文件池、截图池和超时监控线程
+  → 依次停止截图、文件和命令任务池
+      └─ 拒绝新任务、清空排队任务、取消 worker 的同步 I/O，然后 join worker
+  → join 已被唤醒的超时监控线程
   → completion workers 继续排空取消/完成通知
   → 待投递 I/O 计数归零后发送 worker 退出通知
   → 如果退出通知投递失败，则关闭完成端口唤醒其余 worker
-  → join 所有线程并关闭 IOCP、socket 和 Winsock
+  → join 所有线程并关闭 IOCP 与 socket；transport 析构时再由 RAII 释放 Winsock
 ```
 
 不能先销毁完成端口或连接上下文再等待完成通知，否则内核可能向已经失效的 `OVERLAPPED` 或

@@ -83,6 +83,18 @@ QByteArray Packet::serialize() const
     return bytes;
 }
 
+/**
+ * Serialized packet layout (little-endian):
+ *
+ * +------------+------------+------------+--------------+------------+
+ * | Header     | Length     | Command    | Payload      | Checksum   |
+ * +------------+------------+------------+--------------+------------+
+ * | 2 bytes    | 4 bytes    | 2 bytes    | N bytes      | 2 bytes    |
+ * +------------+------------+------------+--------------+------------+
+ *
+ * Length = Command (2) + Payload (N) + Checksum (2) = N + 4 bytes.
+ * Total serialized size = Header (2) + Length field (4) + Length = N + 10 bytes.
+ */
 std::optional<Packet> Packet::tryParse(QByteArray& _buffer)
 {
     static QByteArray const headerBytes{"\xFF\xFE", 2};

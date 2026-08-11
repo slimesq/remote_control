@@ -25,11 +25,13 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 - Windows
 - Visual Studio Build Tools，包含 MSVC C++ 工具链
 - CMake 3.25 或更高版本
-- Ninja（脚本默认使用 Visual Studio 附带的 Ninja）
+- Ninja
 - Qt 5.15 或 Qt 6 的 MSVC Kit
 - PowerShell 5.1 或更高版本
 
 脚本优先使用环境变量 `QTDIR` 指定的 Qt Kit。未设置时，会搜索常见 Qt 安装目录。
+Ninja 按以下顺序查找：`NINJA_EXE` 指定的程序、`PATH` 中的 `ninja.exe`、Visual Studio
+附带的 Ninja。三处都找不到时，初始化脚本会提示安装 Ninja 或设置 `NINJA_EXE`。
 
 例如：
 
@@ -61,10 +63,10 @@ Ninja，然后生成 `CMakeUserPresets.json`。VS Code 中也可以运行任务
 `CMake: Setup Local Presets`。
 
 VS Code 的 CMake Tools 应选择 `local-msvc-debug` 或 `local-msvc-release` Configure
-Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Build Preset。
+Preset，再选择对应的完整项目、`client`、`server` 或 `tests` Build Preset。
 换电脑时只需重新运行初始化脚本，共享文件不需要改动。
 
-构建时可以选择完整项目、客户端或服务端：
+构建时可以选择完整项目、客户端、服务端或测试程序：
 
 | Build Preset | 目标 |
 | --- | --- |
@@ -72,6 +74,7 @@ Preset，再选择对应的 `local-msvc-*-client` 或 `local-msvc-*-server` Buil
 | `local-msvc-debug-client` | Debug 客户端 `RemoteControlClient` |
 | `local-msvc-debug-server` | Debug 服务端 `RemoteControlServer` |
 | `local-msvc-debug-tests` | Debug 的协议、客户端 worker、smoke、transport 生命周期、状态机和韧性测试程序 |
+| `local-msvc-release` | Release 全部目标 |
 | `local-msvc-release-client` | Release 客户端 `RemoteControlClient` |
 | `local-msvc-release-server` | Release 服务端 `RemoteControlServer` |
 | `local-msvc-release-tests` | Release 的协议、客户端 worker、smoke、transport 生命周期、状态机和韧性测试程序 |
@@ -91,6 +94,12 @@ cmake --build --preset local-msvc-debug-client
 # 只构建 Debug 服务端
 cmake --build --preset local-msvc-debug-server
 
+# 只构建 Debug 测试程序（包括 smoke test 可执行文件）
+cmake --build --preset local-msvc-debug-tests
+
+# 构建 Release 全部目标
+cmake --build --preset local-msvc-release
+
 # 测试
 ctest --preset local-msvc-debug
 ```
@@ -109,13 +118,13 @@ SHA-256 指纹，并在本地 preset 缺失、工具链失效或生成脚本发�
 
 支持的参数：
 
-| 参数 | 可选值 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `-Action` | `configure`、`build`、`clean` | `build` | 选择操作 |
-| `-Config` | `Debug`、`Release` | `Debug` | 选择构建类型 |
-| `-Target` | `all`、`client`、`server`、`tests` | `all` | 选择构建目标 |
-| `-RefreshPresets` | 开关 | 关闭 | 重新检测 Qt、Ninja、MSVC 和 SDK |
-| `-Deploy` | 开关 | 关闭 | 强制重新部署 Qt 与 MSVC 运行库 |
+| 参数 | 可选值 | 默认值 | 适用 `Action` | 说明 |
+| --- | --- | --- | --- | --- |
+| `-Action` | `configure`、`build`、`clean` | `build` | — | `configure` 只生成构建系统；`build` 按需配置后编译；`clean` 删除对应构建目录 |
+| `-Config` | `Debug`、`Release` | `Debug` | 全部 | 选择配置或清理的构建类型 |
+| `-Target` | `all`、`client`、`server`、`tests` | `all` | 仅 `build` | 选择编译目标；`configure` 配置完整项目，`clean` 清理整个配置目录 |
+| `-RefreshPresets` | 开关 | 关闭 | `configure`、`build` | 重新检测 Qt、Ninja、MSVC 和 SDK；`clean` 不使用该参数 |
+| `-Deploy` | 开关 | 关闭 | 仅 `build` | 强制重新部署 Qt 与 MSVC 运行库 |
 
 常用示例：
 
@@ -187,15 +196,16 @@ build/msvc-release
 .\scripts\Run.ps1 -Target smoke -BuildDir .\build\msvc-debug
 ```
 
-其他参数：
+参数说明：
 
-| 参数 | 说明 |
-| --- | --- |
-| `-BuildDir` | 指定构建目录；存在多个构建目录时建议提供 |
-| `-ServerHost` | 服务端地址，默认为 `127.0.0.1` |
-| `-Port` | 服务端端口，默认为 `9527` |
-| `-NoTray` | 仅对 `server` 生效，让服务端以无托盘模式运行 |
-| `-LockTestSeconds` | 仅对 `server` 生效；模拟锁定指定秒数后自动解锁，服务端继续运行 |
+| 参数 | 默认值 | 适用 target | 作用与边界 |
+| --- | --- | --- | --- |
+| `-Target` | 无，必须指定 | 全部 | 只能是 `client`、`server` 或 `smoke` |
+| `-BuildDir` | 自动搜索 `build/` | 全部 | 限定程序查找目录；未指定且存在多个匹配程序时，脚本会要求显式指定 |
+| `-ServerHost` | `127.0.0.1` | `client`、`smoke` | 指定要连接的服务端地址；对 `server` 不生效 |
+| `-Port` | `9527` | 全部 | 取值为 `1`～`65535`；`client`、`smoke` 使用它连接服务端，`server` 使用它监听端口 |
+| `-NoTray` | 关闭 | `server` | 传递 `--no-tray`；对 `client`、`smoke` 不生效 |
+| `-LockTestSeconds` | `0` | `server` | 仅大于 `0` 时运行定时模拟锁定测试；其他 target 不使用该参数 |
 
 `Run.ps1` 不提供启动项安装、启动项删除和 UAC 提权参数。这些维护操作需要直接运行构建
 目录中的 `RemoteControlServer.exe`，具体参数见项目根目录 [README](../README.md)

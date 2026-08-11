@@ -45,6 +45,7 @@ scripts/          构建与运行入口
 | 目标 | 从这里开始 |
 | --- | --- |
 | 第一次构建或查找参数 | [构建与运行脚本](scripts/README.md) |
+| 了解项目功能及其技术实现 | [项目功能与技术实现](docs/FeaturesAndDesign.md) |
 | 系统学习项目代码 | [项目代码学习指南](docs/StudyGuide.md) |
 | 理解客户端对象、线程和连接 | [客户端系统架构](docs/ClientArchitecture.md) |
 | 理解 IOCP、状态机和安全停机 | [IOCP 服务端系统架构](docs/ServerArchitecture.md) |
@@ -59,7 +60,9 @@ scripts/          构建与运行入口
 - CMake 3.25 或更高版本
 - C++17
 - Visual Studio Build Tools/MSVC
+- Ninja（可独立安装，也可使用 Visual Studio 附带版本）
 - Qt 5.15 或 Qt 6，包含 Core、Gui、Widgets、Network
+- PowerShell 5.1 或更高版本
 - VS Code 或 Qt Creator
 
 ## 快速开始
@@ -67,9 +70,13 @@ scripts/          构建与运行入口
 ### VS Code
 
 1. 用 VS Code 打开仓库目录。
-2. 安装工作区推荐的 CMake、C++、clangd 和 Qt 扩展。
+2. 安装工作区推荐扩展：CMake Tools 负责 CMake preset/target，C/C++ 提供 MSVC 调试器，
+   clangd 负责代码跳转、补全和诊断，Qt 扩展负责 Qt Kit 与 `.ui` 文件支持。
 3. 按 `Ctrl+Shift+B` 执行 Debug 增量构建。
 4. 按 `F5`，选择客户端、服务端或 smoke test；运行 smoke test 前需要先启动服务端。
+
+> `RemoteControlSmokeTests` 会实际请求截图、发送鼠标控制、验证文件执行，并对临时文件执行
+> 下载与删除。请只连接受控测试环境；只想验证无系统副作用的测试时，应运行 CTest。
 
 构建脚本和 CMake Tools 都会把当前配置的 `compile_commands.json` 同步到项目根目录，供 `clangd` 完成跳转和索引。
 
@@ -141,11 +148,7 @@ Qt Creator 生成的 `CMakeLists.txt.user`、`*.creator.user` 和 `build/` 内�
 - 服务端监听地址：所有本机 IPv4 网络接口（`INADDR_ANY`）
 
 客户端只负责连接指定服务端，不会启动或管理服务端进程。本地开发时，请在两个终端中分别启动服务端和客户端：
-
-```powershell
-.\scripts\Run.ps1 -Target server -BuildDir .\build\msvc-debug
-.\scripts\Run.ps1 -Target client -BuildDir .\build\msvc-debug
-```
+具体命令见前面的“PowerShell”快速开始。
 
 ## 命令行配置
 

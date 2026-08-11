@@ -34,6 +34,34 @@ bool directoryEntryLess(remote_control::FileEntry const& _left,
     return QString::localeAwareCompare(_left.fileName, _right.fileName) < 0;
 }
 
+/**
+ * @brief Shuts down a worker and its event loop in one queued callback, then joins the thread.
+ * @param _thread Worker thread to stop and join.
+ * @param _worker Worker whose thread-owned resources must be released first.
+ */
+template <typename Worker>
+void stopWorkerThread(QThread* const _thread, Worker* const _worker)
+{
+    if (!_thread->isRunning())
+    {
+        return;
+    }
+
+    bool const shutdownQueued{QMetaObject::invokeMethod(
+        _worker,
+        [_worker] {
+            _worker->shutdown();
+            QThread::currentThread()->quit();
+        },
+        Qt::QueuedConnection)};
+    if (!shutdownQueued)
+    {
+        // The worker context is unavailable; stop the event loop so thread teardown can continue.
+        _thread->quit();
+    }
+    _thread->wait();
+}
+
 }  // namespace
 
 /**
@@ -550,38 +578,10 @@ RemoteClient::RemoteClient(QObject* _parent)
 
 RemoteClient::~RemoteClient()
 {
-    // Shut down each worker in its owning thread before stopping and joining that thread.
-    if (this->m_screenStreamThread->isRunning())
-    {
-        // Blocking delivery completes worker-owned cleanup before the event loop is stopped.
-        QMetaObject::invokeMethod(
-            this->m_screenStreamWorker,
-            [worker = this->m_screenStreamWorker] { worker->shutdown(); },
-            Qt::BlockingQueuedConnection);
-        // Request a normal event-loop exit, then wait until the thread has fully terminated.
-        this->m_screenStreamThread->quit();
-        this->m_screenStreamThread->wait();
-    }
-
-    if (this->m_controlStreamThread->isRunning())
-    {
-        QMetaObject::invokeMethod(
-            this->m_controlStreamWorker,
-            [worker = this->m_controlStreamWorker] { worker->shutdown(); },
-            Qt::BlockingQueuedConnection);
-        this->m_controlStreamThread->quit();
-        this->m_controlStreamThread->wait();
-    }
-
-    if (this->m_fileDownloadThread->isRunning())
-    {
-        QMetaObject::invokeMethod(
-            this->m_fileDownloadWorker,
-            [worker = this->m_fileDownloadWorker] { worker->shutdown(); },
-            Qt::BlockingQueuedConnection);
-        this->m_fileDownloadThread->quit();
-        this->m_fileDownloadThread->wait();
-    }
+    // Each callback releases thread-owned resources before stopping its own event loop.
+    stopWorkerThread(this->m_screenStreamThread, this->m_screenStreamWorker);
+    stopWorkerThread(this->m_controlStreamThread, this->m_controlStreamWorker);
+    stopWorkerThread(this->m_fileDownloadThread, this->m_fileDownloadWorker);
 }
 
 void RemoteClient::setEndpoint(QString const& _host, quint16 _port)

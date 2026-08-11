@@ -1,7 +1,8 @@
 # 远程控制协议参考
 
 本文记录客户端与服务端共享的 TCP 协议。学习代码的顺序参见
-[项目代码学习指南](StudyGuide.md)，连接如何映射到客户端和服务端线程参见对应的架构文档。
+[项目代码学习指南](StudyGuide.md)，连接如何映射到线程参见
+[客户端系统架构](ClientArchitecture.md)和[IOCP 服务端系统架构](ServerArchitecture.md)。
 
 ## 传输约定
 
@@ -41,8 +42,9 @@
 | `ControlChannel` | 10 | 首包握手 | 空 | 通用状态 payload |
 | `TestConnection` | 1981 | `OneShot` | 空 | 同命令、空 payload |
 
-首个完整 Packet 决定服务端连接阶段。连接分类后不能切换到另一类业务：`ScreenStream` 只接受
-`WatchScreen`，`ControlStream` 只接受鼠标、模拟锁定和解锁命令；一次性连接在最终响应发送后关闭。
+首个完整 Packet 决定服务端连接阶段，连接分类后不能切换到另一类业务。`ScreenStream` 收到
+`WatchScreen` 以外的命令时按协议错误关闭连接；`ControlStream` 对鼠标、模拟锁定和解锁命令正常
+响应，对其他命令返回失败状态并保留连接。一次性连接在最终响应发送后关闭。
 
 ## 通用状态 payload
 
@@ -51,11 +53,21 @@
 | 值 | 枚举 | 含义 |
 | --- | --- | --- |
 | `0` | `StatusCode::Failure` | 命令失败 |
-| `1` | `StatusCode::Success` | 命令成功 |
+| `1` | `StatusCode::Success` | 达到该命令定义的成功条件 |
 | 其他值 | 未定义 | 客户端按失败处理 |
 
 `parseStatusPayload()` 只有在第一个字节明确为 `StatusCode::Success` 时才返回 `true`；空 payload、
 `Failure` 和未知状态值都返回 `false`。
+
+状态码只编码成功或失败，具体成功条件由命令定义：
+
+| 命令 | `Success` 的含义 |
+| --- | --- |
+| `ControlChannel` | 服务端已接受控制长连接握手 |
+| `MouseEvent` | 对应的 Windows 鼠标定位或输入注入调用成功 |
+| `LockMachine`、`UnlockMachine` | 请求已投递到服务端 GUI 线程，不表示界面状态已经切换完成 |
+| `RunFile` | Windows shell 已接受打开请求，不表示目标程序已经执行结束 |
+| `DeleteFile` | 服务端已完整删除目标文件或目录树 |
 
 ## `FileEntry` payload
 
@@ -91,6 +103,25 @@ download generation 过滤已经排队的旧进度、完成或取消结果，这
 | `y` | `qint32` | 远程屏幕绝对 y 坐标 |
 
 纯移动使用 `MouseAction::Move + MouseButton::None`；点击、按下、释放和双击需要具体按钮。
+
+`MouseAction` 的线上数值：
+
+| 值 | 枚举 |
+| ---: | --- |
+| `0` | `MouseAction::Click` |
+| `1` | `MouseAction::DoubleClick` |
+| `2` | `MouseAction::Press` |
+| `3` | `MouseAction::Release` |
+| `4` | `MouseAction::Move` |
+
+`MouseButton` 的线上数值：
+
+| 值 | 枚举 |
+| ---: | --- |
+| `0` | `MouseButton::Left` |
+| `1` | `MouseButton::Right` |
+| `2` | `MouseButton::Middle` |
+| `8` | `MouseButton::None` |
 
 ## 修改协议时的检查清单
 
