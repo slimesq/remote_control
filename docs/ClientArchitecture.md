@@ -4,6 +4,8 @@
 [项目代码学习指南](StudyGuide.md)。
 
 Packet、命令和 payload 布局参见 [远程控制协议参考](ProtocolReference.md)。
+跨组件的设计模式、生命周期原则和工程取舍参见
+[设计思想与设计模式](DesignPrinciples.md)。
 
 第一次阅读只需抓住三点：GUI 不等待同步网络操作；每个 worker 只在所属线程操作自己的
 `QTcpSocket`；`RemoteClient` 是界面与各网络实现之间的唯一业务入口。

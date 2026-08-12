@@ -2,7 +2,8 @@
 
 本文说明服务端引入 Windows I/O Completion Ports（IOCP）后的组件职责、线程模型、连接状态
 和关闭顺序。构建与命令行参数参见项目 [README](../README.md)，共享协议参见
-[远程控制协议参考](ProtocolReference.md)。
+[远程控制协议参考](ProtocolReference.md)。跨组件的设计模式、生命周期原则和工程取舍参见
+[设计思想与设计模式](DesignPrinciples.md)。
 
 第一次阅读不需要同时理解托盘、UAC、启动项和 GDI 细节。先跟踪一条 `TestConnection` 请求，
 再理解连接状态、发送队列和停机顺序；外围 Windows 集成功能可以最后阅读。

@@ -46,6 +46,7 @@ scripts/          构建与运行入口
 | --- | --- |
 | 第一次构建或查找参数 | [构建与运行脚本](scripts/README.md) |
 | 了解项目功能及其技术实现 | [项目功能与技术实现](docs/FeaturesAndDesign.md) |
+| 理解设计原则、设计模式与工程取舍 | [设计思想与设计模式](docs/DesignPrinciples.md) |
 | 系统学习项目代码 | [项目代码学习指南](docs/StudyGuide.md) |
 | 理解客户端对象、线程和连接 | [客户端系统架构](docs/ClientArchitecture.md) |
 | 理解 IOCP、状态机和安全停机 | [IOCP 服务端系统架构](docs/ServerArchitecture.md) |

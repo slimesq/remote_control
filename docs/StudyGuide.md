@@ -4,7 +4,8 @@
 开始逐段阅读代码前，可以先通过[项目功能与技术实现](FeaturesAndDesign.md)建立功能视角。构建和
 运行参数统一查阅项目 [README](../README.md)，组件细节分别查阅
 [客户端系统架构](ClientArchitecture.md)、[IOCP 服务端系统架构](ServerArchitecture.md)和
-[远程控制协议参考](ProtocolReference.md)。
+[远程控制协议参考](ProtocolReference.md)，跨模块原则参见
+[设计思想与设计模式](DesignPrinciples.md)。
 
 具备 C++ 和 Qt 基础时，只理解客户端主要调用链通常需要 15～25 小时，理解 IOCP 服务端主要调用链
 通常还需要 15～25 小时。完成下表的全部阅读和练习约需 36～61 小时；若要安全修改并发关闭和停机
@@ -46,6 +47,9 @@ RemoteControlServer ─► RemoteControl::ServerTransport ─► IOCP / task poo
 
 `RemoteControlServer` 是唯一服务端程序；`RemoteControl::ServerTransport` 是被服务端和测试共同
 链接的静态库 target，不是第二个服务端。
+
+阶段二完成后，先概览[设计思想与设计模式](DesignPrinciples.md)中的设计总览和客户端设计；完成
+阶段六后再完整阅读该文档，并用其中的修改检查清单检验自己是否真正理解跨模块约束。
 
 ## 3. 分阶段阅读路线
 
