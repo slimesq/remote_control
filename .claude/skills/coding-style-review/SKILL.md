@@ -1,6 +1,9 @@
 ---
 name: coding-style-review
-description: Review, edit, and validate C++17, Qt, CMake, clangd, clang-format, and clang-tidy changes in the RemoteControl repository. Use when changing .h, .cpp, .ui, CMake, VS Code, Qt Creator, build-script, formatting, static-analysis, naming, const-correctness, ownership, protocol, or Windows integration code in this project.
+description: >-
+  Review and modify source, build and IDE configuration, Markdown documentation,
+  and PowerShell scripts in RemoteControl while preserving its C++17, Qt 5.15/6,
+  Windows/MSVC, Ninja, VS Code, and Qt Creator conventions.
 ---
 
 # RemoteControl Coding Style Review
@@ -33,9 +36,12 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 ## Files and Directories
 
 - Name folders with lowercase words separated by underscores.
-- Name C++ headers and sources in PascalCase. Give matching header/source pairs the same base name
-  and corresponding `include/<module>` and `src/<module>` paths.
-- Keep generated files and build output under `build/`; never commit them.
+- Name C++ headers and sources in PascalCase. Give matching header/source pairs the same base name.
+- Keep application headers under `include/<module>` and implementations under `src/<module>`.
+  A self-contained target may instead own public `include/`, private `internal/`, and `src/`
+  directories, as `server_transport` does. Keep test-only helpers under `tests/`.
+- Keep build artifacts under `build/`. Keep machine-local generated files such as
+  `CMakeUserPresets.json` and `compile_commands.json` ignored; never commit them.
 - Do not add documentation or helper scripts when an existing file or script can carry the same
   information clearly.
 
@@ -43,8 +49,10 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 
 - Use `#pragma once`.
 - Prefer forward declarations when a complete type is not required.
-- Include project headers from the `include` root with their full module path, such as
-  `#include "common/Packet.h"`.
+- Include application and common headers from the project `include` root with their full module
+  path, such as `#include "common/Packet.h"`. Within a self-contained target, use that target's
+  configured include roots: `server_transport` uses public header names and `internal/...` for
+  private headers.
 - Use double quotes for project/generated headers and angle brackets for Qt, Windows, and standard
   library headers.
 - Never use parent-relative paths such as `../common/Packet.h`.
@@ -62,7 +70,7 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 - Prefix non-static class members with `m_`, followed by camelCase.
 - Prefix mutable global variables with `g_`; avoid mutable globals.
 - Use PascalCase for `constexpr` and other named constants, matching `.clang-tidy` and the current
-  project style. Do not import the original skill's `ALL_CAPS_WITH_UNDERSCORES` convention.
+  project style.
 - Avoid one-character names except conventional loop indices `i`, `j`, and `k`.
 - Use `enum class` and PascalCase enum values.
 - Inside non-static member functions, qualify access to non-static members with `this->`.
@@ -86,7 +94,9 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 ## Const Correctness and Variables
 
 - Use east-const style, for example `QString const value{}` and `Widget* const widget{}`.
-- Add `const` to local values, parameters, and member functions when semantics allow it.
+- Add `const` to local values, referenced objects, and member functions when semantics allow it.
+  Do not add interface-irrelevant top-level `const` to declarations of by-value parameters. In a
+  definition, use it only when the parameter is not modified or moved from.
 - Add `constexpr` when a value is compile-time constant.
 - Give each variable its own declaration statement.
 - Prefer direct initialization over default construction followed by assignment.
@@ -139,8 +149,7 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
   the allocation site.
 - Avoid manual deletion of parent-owned `QObject` objects.
 - Keep allocations exception-safe and release Windows handles/resources on every exit path.
-- Smart pointers are allowed and encouraged where they express ownership; do not import the
-  original skill's smart-pointer prohibition.
+- Smart pointers are allowed and encouraged where they express ownership.
 
 ## Errors, Protocol, and Windows Boundaries
 
@@ -151,14 +160,33 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 - Preserve packet size, checksum, length validation, and incomplete-buffer behavior.
 - Treat values returned by Windows pointer typedefs according to their API contract. Use `auto const`
   when east-const spelling is obscured by a pointer typedef such as `HINSTANCE`.
-- Prefer Qt when it provides equivalent behavior. Keep all remaining direct Windows API calls and
-  Windows data types isolated in `PlatformIntegration.cpp`; do not expose them to business or UI
-  classes.
+- Prefer Qt when it provides equivalent behavior. Centralize host-side Windows capabilities such as
+  screen capture, input injection, path checks, shell operations, elevation, startup integration,
+  and shell-UI control in `WindowsPlatformIntegration.cpp`.
+- Reach transport-facing host capabilities through `WindowsRemoteControlHostServices`. Process and
+  UI lifecycle boundaries in `ServerMain`, `ServerTrayController`, and `ScreenLockWindow` may call
+  `WindowsPlatformIntegration` directly.
+- Keep production Winsock and IOCP calls/types inside `server_transport` private headers and source
+  files. Internal transport tests may include those private headers, but business/UI classes,
+  `RemoteControlHostServices`, and the public `RemoteControlTransport` interface must not expose
+  Windows networking types.
 - Use assertions only for true programmer invariants or tests, never for recoverable runtime input.
 
 ## Comments and Documentation
 
 - Write all code comments in English.
+- Use Markdown tables only for short data that benefits from column-by-column comparison. Use
+  grouped lists or subsections for long sentences, multiple code identifiers, or responsibility
+  descriptions so Typora does not require horizontal scrolling or wrap text one character per
+  line.
+- Give each Mermaid diagram one reading goal. Prefer a top-to-bottom `graph TD` layout for
+  architecture diagrams, keep nodes and edge labels short, and move signal names, detailed
+  responsibilities, and lifecycle rules into nearby prose.
+- Keep one diagram to roughly seven nodes and nine edges. Split it by concern when additional
+  relationships would force the renderer to shrink the complete diagram.
+- Use `graph` rather than `flowchart` for Mermaid 8.4 compatibility. Avoid wide subgraphs and dense
+  cross-links; split or remove a diagram when a short list explains the same relationship more
+  clearly.
 - Use `//` for implementation comments.
 - Document every project function with a concise `/** ... */` Doxygen comment. Put comments on
   declarations in headers and on definitions only for source-local functions; do not duplicate
@@ -192,10 +220,10 @@ working Qt 5.15/Qt 6, MSVC, VS Code, and Qt Creator behavior while enforcing the
 
 ## Validation
 
-Run formatting:
+Validate formatting:
 
 ```powershell
-$files = rg --files include src -g '*.h' -g '*.cpp'
+$files = rg --files include src server_transport tests -g '*.h' -g '*.cpp'
 clang-format --dry-run --Werror --style=file $files
 ```
 
@@ -212,10 +240,10 @@ ctest --test-dir .\build\msvc-debug --output-on-failure
 ```
 
 Run static analysis. Standalone LLVM 18 needs the same compatibility macro already supplied to
-clangd by `.clangd` when used with the installed Visual Studio 2026 standard library:
+clangd by `.clangd` when used with a newer installed Visual Studio standard library:
 
 ```powershell
-$files = rg --files src -g '*.cpp'
+$files = rg --files src server_transport/src tests -g '*.cpp'
 clang-tidy -p build/msvc-debug `
     --extra-arg=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH `
     --quiet $files
@@ -223,17 +251,6 @@ clang-tidy -p build/msvc-debug `
 
 Treat diagnostics in project files as actionable. System-header warning counts printed by
 `clang-tidy` are not project findings when no diagnostic location points into this repository.
-
-## Explicitly Excluded Original Rules
-
-Do not apply rules tied to a different geometry/kernel architecture:
-
-- `ErrorCode`, `checkError`, `ObjectBase`, `Object`, `AuxObject`, session-managed objects, factory
-  construction, or memory-pool macros.
-- Project-specific aliases such as `Int`, `Double`, `Bool`, `String`, or a custom `Math` class.
-- Prohibitions on STL containers, smart pointers, lambdas, and anonymous namespaces.
-- A blanket ASCII prohibition for user-facing strings or UTF-8 protocol tests.
-- A blanket `reinterpret_cast` prohibition at Windows and binary wire-format boundaries.
 
 When reviewing, report only concrete findings with file/line references and suggested fixes. When
 asked to modify code, fix the findings and validate the result instead of returning a review only.

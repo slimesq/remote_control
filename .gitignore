@@ -25,6 +25,8 @@ CMakeFiles/
 *.creator
 *.creator.user
 *.creator.user.*
+CMakeLists.txt.user
+CMakeLists.txt.user.*
 
 # Qt generated files
 *.pro.user

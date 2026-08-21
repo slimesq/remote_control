@@ -181,7 +181,8 @@ void TaskPool::stop()
     {
         if (thread.joinable())
         {
-            // No later task can start, so cancellation cannot target unrelated synchronous I/O.
+            // Try to cancel synchronous I/O blocking this worker so it can stop.
+            // No new task can start, so the request cannot affect unrelated I/O.
             static_cast<void>(CancelSynchronousIo(thread.native_handle()));
         }
     }
